@@ -214,6 +214,7 @@ const app = {
   hub: location.host,
   focus: null,
   theme: params.get('theme') || safeGet('am.theme') || 'phosphor',
+  basic: (params.get('mode') || safeGet('am.mode')) === 'basic',
   menu: null,
   act: null, // control function(id, action)
   dirty: true,
@@ -221,22 +222,25 @@ const app = {
   sys: null,
   cpuHist: [],
   memHist: [],
+  gpuHist: [],
   tokHist: [], // [t, totalTokens] for burn rate
 };
 function pushSystem(sys) {
   app.sys = sys;
   app.cpuHist.push(sys.cpu); if (app.cpuHist.length > 120) app.cpuHist.shift();
   app.memHist.push((sys.memUsed / sys.memTotal) * 100); if (app.memHist.length > 120) app.memHist.shift();
+  if (sys.gpu) { app.gpuHist.push(sys.gpu.util); if (app.gpuHist.length > 120) app.gpuHist.shift(); }
 }
 // Plausible host metrics for the in-browser demo (the real hub samples the OS).
 function fakeSystem(store) {
   const n = 16, cores = Array.from({ length: n }, () => 20 + Math.random() * 30);
-  let mem = 0.46;
+  let mem = 0.46, gpu = 35;
   const tick = () => {
     const busy = [...app.agents.values()].filter((a) => ACTIVE.has(a.status)).length;
     for (let i = 0; i < n; i++) cores[i] = Math.max(2, Math.min(100, cores[i] + (Math.random() - 0.5) * 22 + (busy * 6 - cores[i]) * 0.08));
     mem = Math.max(0.3, Math.min(0.92, mem + (Math.random() - 0.48) * 0.006));
-    store.setSystem({ t: Date.now(), host: 'workstation', platform: 'linux x64', cpu: cores.reduce((a, b) => a + b, 0) / n, cores: [...cores], model: 'demo cpu', load: [busy * 0.9 + 1.2, busy * 0.8 + 1, busy * 0.7 + 0.9], memUsed: mem * 32 * 2 ** 30, memTotal: 32 * 2 ** 30, rss: 84 * 2 ** 20 });
+    gpu = Math.max(3, Math.min(99, gpu + (Math.random() - 0.5) * 14 + (busy * 9 - gpu) * 0.05));
+    store.setSystem({ t: Date.now(), host: 'workstation', platform: 'linux x64', cpu: cores.reduce((a, b) => a + b, 0) / n, cores: [...cores], model: 'demo cpu', load: [busy * 0.9 + 1.2, busy * 0.8 + 1, busy * 0.7 + 0.9], memUsed: mem * 32 * 2 ** 30, memTotal: 32 * 2 ** 30, rss: 84 * 2 ** 20, gpu: { name: 'demo gpu', util: gpu, memUsed: (6 + gpu / 12) * 2 ** 30, memTotal: 16 * 2 ** 30 } });
   };
   tick();
   setInterval(tick, 1000);
@@ -244,6 +248,7 @@ function fakeSystem(store) {
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
 document.documentElement.dataset.theme = app.theme;
+document.documentElement.dataset.mode = app.basic ? 'basic' : 'full';
 
 function onEvent(evt) {
   if (evt.type === 'snapshot') {
@@ -327,7 +332,7 @@ function renderHeader(t) {
   const logoW = len(LOGO[0][0]) + 2 + len(LOGO[0][1]);
   for (let i = 0; i < 2; i++) {
     const row = L().t('│', 'fr').sp(2);
-    if (inner > logoW + 72) row.t(LOGO[i][0], 'logo xb').sp(2).t(LOGO[i][1], 'logo l2 xb').sp(4);
+    if (!app.basic && inner > logoW + 72) row.t(LOGO[i][0], 'logo xb').sp(2).t(LOGO[i][1], 'logo l2 xb').sp(4);
     if (i === 0) {
       row.t('session ', 'dim').t(app.session.title || '—', 'b');
       const r = L()
@@ -341,7 +346,7 @@ function renderHeader(t) {
       header.set(1, row.fill(w - r.n).merge(r).html(w));
     } else {
       const up = hms(t - (app.session.startedAt || t));
-      row.t('uptime ', 'dim').t(up, 'b').t('   tokens ', 'dim').t(kfmt(tokens), 'b');
+      if (!app.basic) row.t('uptime ', 'dim').t(up, 'b').t('   tokens ', 'dim').t(kfmt(tokens), 'b');
       const bw = Math.max(10, Math.min(40, Math.floor(inner * 0.18)));
       const b = meter(bw, overallShown, 'global');
       const r = L().t('overall ', 'dim').h(b.html, b.n).t(` ${overallShown.toFixed(1).padStart(5)}%`, 'b').sp(2).t('│', 'fr');
@@ -353,7 +358,7 @@ function renderHeader(t) {
   const theme = THEMES.find((x) => x.id === app.theme) || THEMES[0];
   const bl = L().t('╰─', 'fr');
   if (app.focus) { const b = btn(' « BACK TO GRID ', 'unfocus'); bl.t('┤', 'fr').h(b.html, b.n).t('├─', 'fr'); }
-  const actions = [btn(' ‖ PAUSE ALL ', 'pause-all'), btn(' ▶ RESUME ALL ', 'resume-all', '', 'ok'), btn(` ▒ THEME · ${theme.name.toUpperCase()} `, 'theme-menu', '', app.menu ? 'on' : '')];
+  const actions = [btn(app.basic ? ' ▣ FULL MODE ' : ' □ BASIC MODE ', 'basic', '', app.basic ? 'on' : ''), btn(' ‖ PAUSE ALL ', 'pause-all'), btn(' ▶ RESUME ALL ', 'resume-all', '', 'ok'), btn(` ▒ THEME · ${theme.name.toUpperCase()} `, 'theme-menu', '', app.menu ? 'on' : '')];
   const br = L();
   actions.forEach((a, i) => br.t('┤', 'fr').h(a.html, a.n).t(i < actions.length - 1 ? '├─' : '├', 'fr'));
   br.t('─╯', 'fr');
@@ -362,8 +367,10 @@ function renderHeader(t) {
 
 function renderFooter() {
   const w = footer.w;
-  const l = L().t(' T', 'acc b').t(' theme  ', 'dim').t('1-9', 'acc b').t(' focus  ', 'dim').t('ESC', 'acc b').t(' grid  ', 'dim').t('P', 'acc b').t(' pause all  ', 'dim').t('R', 'acc b').t(' resume all', 'dim');
-  const r = L().t('mcp ', 'dim').t('agent_register · agent_update · agent_complete', 'faint').t('   ', '').t(`${COLS}×${ROWS}`, 'dim').sp(1);
+  const l = L().t(' T', 'acc b').t(' theme  ', 'dim').t('B', 'acc b').t(' basic  ', 'dim').t('1-9', 'acc b').t(' focus  ', 'dim').t('ESC', 'acc b').t(' grid  ', 'dim').t('P', 'acc b').t(' pause all  ', 'dim').t('R', 'acc b').t(' resume all', 'dim');
+  const r = L();
+  if (!app.basic) r.t('mcp ', 'dim').t('agent_register · agent_update · agent_complete', 'faint').t('   ', '');
+  r.t('made by', 'faint').sp(1).h(`<a class="btn credit" href="https://x.com/realhasaca" target="_blank" rel="noopener">${iconize(' X @realhasaca ')}</a>`, len(' X @realhasaca '));
   footer.set(0, l.fill(w - r.n).merge(r).html(w));
 }
 
@@ -422,10 +429,14 @@ class Pane {
 
     // ── fixed head
     const tE = elapsed(a);
-    cell(L().t('◆ ', 'pc').t(a.name.toUpperCase(), 'b').t('  ').t(a.role || '', 'dim').t(a.model ? ` · ${a.model}` : '', 'faint')
-      .fill(W - 10).t('T+', 'dim').t(hms(tE), ACTIVE.has(a.status) ? 'b' : 'dim'));
-    cell(L().t('“' + (a.task || '—') + '”', 'dim'));
-    cell(L());
+    const basic = app.basic;
+    if (basic) cell(L().t('◆ ', 'pc').t(a.name.toUpperCase(), 'b'));
+    else {
+      cell(L().t('◆ ', 'pc').t(a.name.toUpperCase(), 'b').t('  ').t(a.role || '', 'dim').t(a.model ? ` · ${a.model}` : '', 'faint')
+        .fill(W - 10).t('T+', 'dim').t(hms(tE), ACTIVE.has(a.status) ? 'b' : 'dim'));
+      cell(L().t('“' + (a.task || '—') + '”', 'dim'));
+      cell(L());
+    }
     const pctTxt = `${this.prog.toFixed(1).padStart(5)}%`;
     const b = meter(W - len(pctTxt) - 1, this.prog);
     cell(L().h(b.html, b.n).sp(1).t(pctTxt, 'b pc'));
@@ -433,30 +444,32 @@ class Pane {
     const cur = a.steps[a.stepIndex];
     const stepLine = L().t('step ', 'dim').t(n ? `${a.stepIndex + 1}/${n}` : '—', 'b').t('  › ', 'faint').t(cur ? cur.title : a.stepLabel || 'working', a.status === 'done' ? 'c-done' : ACTIVE.has(a.status) ? 'shimmer pc' : '');
     if (cur && a.stepLabel) stepLine.t(' · ' + a.stepLabel, a.status === 'waiting' ? 'c-wait' : 'dim');
-    cell(stepLine);
+    if (!basic) cell(stepLine);
 
     // ── this agent's own usage limits (token budget, model caps…)
-    const maxLim = h >= 24 ? 3 : h >= 17 ? 2 : h >= 13 ? 1 : 0;
+    const maxLim = basic ? Math.max(0, Math.min(4, h - 9)) : h >= 24 ? 3 : h >= 17 ? 2 : h >= 13 ? 1 : 0;
     const lims = (a.limits || []).slice(0, maxLim);
     if (lims.length) {
-      cell(L());
+      if (!basic) cell(L());
       for (const l of lims) cell(L().t('◇ ', limitPct(l) >= 90 ? 'lvl-crit' : 'faint').h(limitCell(l, W - 2, t, 15).html(W - 2), W - 2));
     }
 
     // ── flexible sections
-    const fixedTail = 1; // metrics
+    const fixedTail = basic ? 0 : 1; // metrics
     let free = h - 2 - rows.length - fixedTail;
     let stepRows = 0, logRows = 0;
-    if (free >= 4 && n) {
+    if (basic && n && free >= 2) { stepRows = Math.min(n, free - 1); free -= stepRows + 1; }
+    else if (free >= 4 && n) {
       const want = Math.min(n, Math.max(2, Math.ceil((free - 2) * 0.42)));
       stepRows = Math.min(want, free - 1);
       free -= stepRows + 1;
     }
-    if (free >= 2) logRows = free - 1;
+    if (basic) free = 0;
+    else if (free >= 2) logRows = free - 1;
     else if (free > 0) { stepRows += free; free = 0; }
 
     if (stepRows) {
-      rows.push(sep(`STEPS ${a.steps.filter((s) => s.state === 'done').length}/${n}`));
+      rows.push(sep(`${basic ? 'TASKS' : 'STEPS'} ${a.steps.filter((s) => s.state === 'done').length}/${n}`));
       let start = Math.max(0, Math.min(a.stepIndex - Math.floor((stepRows - 1) / 2), n - stepRows));
       for (let i = start; i < start + stepRows; i++) {
         const s = a.steps[i];
@@ -482,10 +495,12 @@ class Pane {
     }
     // pad so metrics sit on the last inner row
     while (rows.length < h - 2 - fixedTail) cell(L());
-    const sw = Math.max(8, Math.min(28, Math.floor(W * 0.3)));
-    const spark = sparkline(a.spark || [], sw);
-    const m = L().t('tok ', 'dim').t(kfmt(a.metrics?.tokens || 0), 'b').t('  tools ', 'dim').t(String(a.metrics?.toolCalls ?? 0), 'b').t('  upd ', 'dim').t(ago(now() - a.updatedAt), 'dim');
-    cell(m.fill(W - sw).t(spark.padStart(sw, ' '), 'spark'));
+    if (!basic) {
+      const sw = Math.max(8, Math.min(28, Math.floor(W * 0.3)));
+      const spark = sparkline(a.spark || [], sw);
+      const m = L().t('tok ', 'dim').t(kfmt(a.metrics?.tokens || 0), 'b').t('  tools ', 'dim').t(String(a.metrics?.toolCalls ?? 0), 'b').t('  upd ', 'dim').t(ago(now() - a.updatedAt), 'dim');
+      cell(m.fill(W - sw).t(spark.padStart(sw, ' '), 'spark'));
+    }
 
     // ── frame: top
     const frames = st.frames;
@@ -649,36 +664,43 @@ const amount = (v, unit) => (unit === '$' ? '$' + v.toFixed(v >= 10 ? 0 : 2) : u
 const frameRow = (W, inner, w) => L().t('│', 'fr').sp(1).h(inner.html(W), W).sp(1).t('│', 'fr').html(w);
 let cpuShown = 0, memShown = 0;
 
+let gpuShown = 0;
 function renderSystem(t) {
-  const b = sysBox, w = b.w, W = w - 4;
+  const b = sysBox, w = b.w, W = w - 4, basic = app.basic;
   if (!w) return;
   const s = app.sys;
   const right = L().t('┤', 'fr').t(s ? ` ${s.cores.length} cores · ${s.platform} ` : ' sampling… ', 'dim').t('├─╮', 'fr');
-  b.set(0, L().t('╭─┤', 'fr').t(' SYSTEM ', 'b acc').t('├─', 'fr').t(s ? ` ${s.host} ` : '', 'dim').fill(w - right.n, '─', 'fr').merge(right).html(w));
-  if (!s) { b.set(1, frameRow(W, L().t('waiting for hub sample…', 'dim'), w)); b.set(2, frameRow(W, L(), w)); }
+  b.set(0, L().t('╭─┤', 'fr').t(' SYSTEM ', 'b acc').t('├─', 'fr').t(s && !basic ? ` ${s.host} ` : '', 'dim').fill(w - (basic ? 2 : right.n), '─', 'fr').merge(basic ? L().t('─╮', 'fr') : right).html(w));
+  const rows = [];
+  if (!s) rows.push(L().t('waiting for hub sample…', 'dim'));
   else {
     const mp = (s.memUsed / s.memTotal) * 100;
     cpuShown += (s.cpu - cpuShown) * 0.15; memShown += (mp - memShown) * 0.15;
-    const sw = Math.max(6, Math.min(24, W - 52));
-    const mw = Math.max(8, W - 4 - 7 - sw - 2 - 21);
-    const cpuTail = L().t(sparkline(app.cpuHist, sw, 100).padStart(sw), `spark ${lvl(cpuShown)}`).sp(2).t('load ', 'dim').t(s.load.map((x) => x.toFixed(2)).join(' '), 'b');
-    const c = meter(mw, cpuShown, lvl(cpuShown));
-    b.set(1, frameRow(W, L().t('CPU ', 'dim b').h(c.html, c.n).t(` ${cpuShown.toFixed(1).padStart(5)}%`, `b ${lvl(cpuShown)}`).sp(2).merge(cpuTail), w));
-    const m = meter(mw, memShown, lvl(memShown));
-    const memTail = L().t(sparkline(app.memHist, sw, 100).padStart(sw), `spark ${lvl(memShown)}`).sp(2).t(`${gb(s.memUsed)}/${gb(s.memTotal)} GB`, 'b');
-    b.set(2, frameRow(W, L().t('RAM ', 'dim b').h(m.html, m.n).t(` ${memShown.toFixed(1).padStart(5)}%`, `b ${lvl(memShown)}`).sp(2).merge(memTail), w));
+    if (s.gpu) gpuShown += (s.gpu.util - gpuShown) * 0.15;
+    const sw = basic ? 0 : Math.max(6, Math.min(24, W - 52));
+    const tailW = basic ? 0 : sw + 2 + 21;
+    const mw = Math.max(8, W - 4 - 7 - 2 - tailW);
+    const metric = (label, pct, hist, info) => {
+      const m = meter(mw, pct, lvl(pct));
+      const line = L().t(label, 'dim b').h(m.html, m.n).t(` ${pct.toFixed(1).padStart(5)}%`, `b ${lvl(pct)}`);
+      if (!basic) line.sp(2).t(sparkline(hist, sw, 100).padStart(sw), `spark ${lvl(pct)}`).sp(2).t(info, 'b');
+      return line;
+    };
+    rows.push(metric('CPU ', cpuShown, app.cpuHist, `load ${s.load.map((x) => x.toFixed(2)).join(' ')}`));
+    if (!basic) rows.push(metric('RAM ', memShown, app.memHist, `${gb(s.memUsed)}/${gb(s.memTotal)} GB`));
+    if (s.gpu) rows.push(metric('GPU ', gpuShown, app.gpuHist, s.gpu.memTotal ? `vram ${gb(s.gpu.memUsed)}/${gb(s.gpu.memTotal)} GB` : ''));
+    else rows.push(L().t('GPU ', 'dim b').t('no GPU data (needs nvidia-smi)', 'faint'));
+    if (!basic) rows.push(L().t('cpu ', 'dim').t(s.model, 'faint'), L().t('gpu ', 'dim').t(s.gpu?.name || '—', 'faint'));
   }
+  for (let i = 1; i < b.h - 1; i++) b.set(i, frameRow(W, rows[i - 1] || L(), w));
   // per-core heat strip in the bottom border
   const bl = L().t('╰─', 'fr');
-  if (s) {
-    const bars = s.cores.slice(0, Math.max(4, w - 30)).map((v) => `<span class="${lvl(v)}">${SPARK[Math.min(7, Math.floor((v / 100) * 7.999))]}</span>`).join('');
-    bl.t('┤', 'fr').t(' cores ', 'dim').h(`<span class="c spark" style="--n:${Math.min(s.cores.length, Math.max(4, w - 30))}">${bars}</span>`, Math.min(s.cores.length, Math.max(4, w - 30))).sp(1).t('├', 'fr');
+  if (s && !basic) {
+    const k = Math.min(s.cores.length, Math.max(4, w - 30));
+    const bars = s.cores.slice(0, k).map((v) => `<span class="${lvl(v)}">${SPARK[Math.min(7, Math.floor((v / 100) * 7.999))]}</span>`).join('');
+    bl.t('┤', 'fr').t(' cores ', 'dim').h(`<span class="c spark" style="--n:${k}">${bars}</span>`, k).sp(1).t('├', 'fr');
   }
-  for (let i = 3; i < b.h - 1; i++) {
-    if (i === 3 && s) b.set(i, frameRow(W, L().t('cpu ', 'dim').t(s.model, 'faint'), w));
-    else b.set(i, frameRow(W, L(), w));
-  }
-  const br = L().t('┤', 'fr').t(s ? ` hub ${mb(s.rss)} MB ` : ' — ', 'faint').t('├─╯', 'fr');
+  const br = basic ? L().t('─╯', 'fr') : L().t('┤', 'fr').t(s ? ` hub ${mb(s.rss)} MB ` : ' — ', 'faint').t('├─╯', 'fr');
   b.set(b.h - 1, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
 }
 
@@ -704,14 +726,14 @@ function burnRate(t) {
 }
 
 const providers = () => app.usage?.providers || [];
-const teleRows = () => Math.max(2, Math.min(5, providers().length));
+const teleRows = () => Math.max(app.basic ? 2 : 3, Math.min(5, providers().length));
 
 function renderProvider(t) {
   const b = provBox, w = b.w, W = w - 4, rows = b.h - 2;
   if (!w) return;
   const list = providers();
   const burn = burnRate(t);
-  const right = L().t('┤', 'fr').t(' burn ', 'dim').t(`${kfmt(burn)} tok/min`, 'b').t(' ').t('├─╮', 'fr');
+  const right = app.basic ? L().t('─╮', 'fr') : L().t('┤', 'fr').t(' burn ', 'dim').t(`${kfmt(burn)} tok/min`, 'b').t(' ').t('├─╮', 'fr');
   b.set(0, L().t('╭─┤', 'fr').t(' LIMITS ', 'b acc').t('├─', 'fr').t(` ${list.length} provider${list.length === 1 ? '' : 's'} `, 'dim').fill(w - right.n, '─', 'fr').merge(right).html(w));
   if (!list.length) {
     b.set(1, frameRow(W, L().t('no limits reported yet · each harness calls ', 'dim').t('provider_usage_set', 'b'), w));
@@ -727,7 +749,7 @@ function renderProvider(t) {
       if (!pr) { b.set(1 + r, frameRow(W, L(), w)); continue; }
       const worst = Math.max(0, ...pr.limits.map(limitPct));
       const stale = t - pr.updatedAt > 15 * 60000;
-      const name = L().t('● ', stale ? 'faint' : lvl(worst)).t(pr.provider, 'b').t(pr.plan ? ' ' + pr.plan : '', 'dim');
+      const name = L().t('● ', stale ? 'faint' : lvl(worst)).t(pr.provider, 'b').t(pr.plan && !app.basic ? ' ' + pr.plan : '', 'dim');
       const line = L().h(name.html(nameW), nameW);
       const shown = [...pr.limits].sort((x, y) => limitPct(y) - limitPct(x)).slice(0, per);
       shown.forEach((l, i) => { if (i) line.t(' │ ', 'faint'); line.h(limitCell(l, cw, t, 13).html(cw), cw); });
@@ -739,7 +761,7 @@ function renderProvider(t) {
   const bl = L().t('╰─', 'fr');
   const all = list.flatMap((p) => p.limits.map((l) => ({ ...l, who: p.provider })));
   const tokLimit = all.find((l) => l.unit === 'tok' && l.auto);
-  if (tokLimit && burn > 0) {
+  if (tokLimit && burn > 0 && !app.basic) {
     const eta = (Math.max(0, tokLimit.limit - tokLimit.used) / burn) * 60000;
     const before = tokLimit.resetsAt && eta < tokLimit.resetsAt - t;
     bl.t('┤', 'fr').t(` ${tokLimit.label} full in `, 'dim').t(dur(eta), `b ${before ? 'lvl-warn' : 'lvl-ok'}`).t(' at this burn ', 'dim').t('├', 'fr');
@@ -790,6 +812,16 @@ const SW = {
 };
 const swatch = (id, i) => SW[id][i];
 
+function setBasic(on) {
+  const apply = () => {
+    app.basic = on;
+    safeSet('am.mode', on ? 'basic' : 'full');
+    document.documentElement.dataset.mode = on ? 'basic' : 'full';
+    layout();
+  };
+  if (document.startViewTransition && !reduced) document.startViewTransition(apply); else apply();
+}
+
 function setTheme(id) {
   if (id === app.theme) return;
   const apply = () => { app.theme = id; document.documentElement.dataset.theme = id; safeSet('am.theme', id); app.dirty = true; header.cache.fill(null); paintMenu(); };
@@ -801,10 +833,12 @@ screen.addEventListener('click', async (e) => {
   const b = e.target.closest('.btn');
   if (!b) { if (app.menu && !e.target.closest('.menu')) toggleMenu(false); return; }
   b.classList.remove('ack'); void b.offsetWidth; b.classList.add('ack');
+  if (!b.dataset.act) return; // plain links (credit) just navigate
   const { act, id } = b.dataset;
   if (act === 'focus') { app.focus = id; syncPanes(); }
   else if (act === 'unfocus') { app.focus = null; syncPanes(); }
   else if (act === 'theme-menu') toggleMenu();
+  else if (act === 'basic') setBasic(!app.basic);
   else if (act === 'theme') { setTheme(id); setTimeout(() => toggleMenu(false), 160); }
   else if (act === 'pause-all' || act === 'resume-all') {
     for (const a of app.agents.values()) {
@@ -818,6 +852,7 @@ addEventListener('keydown', (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   const list = [...app.agents.values()].sort((a, b) => a.order - b.order);
   if (e.key === 'Escape') { if (app.menu) toggleMenu(false); else { app.focus = null; syncPanes(); } }
+  else if (e.key === 'b' || e.key === 'B') setBasic(!app.basic);
   else if (e.key === 't' || e.key === 'T') { const i = THEMES.findIndex((x) => x.id === app.theme); setTheme(THEMES[(i + 1) % THEMES.length].id); }
   else if (/^[1-9]$/.test(e.key) && list[+e.key - 1]) { const id = list[+e.key - 1].id; app.focus = app.focus === id ? null : id; syncPanes(); }
   else if (e.key === 'p' || e.key === 'P') screen.querySelector('[data-act="pause-all"]')?.click();

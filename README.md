@@ -105,9 +105,21 @@ hatırlanır. URL'den de seçilebilir: `?theme=amber`.
 | ![](docs/screenshots/theme-glacier.png) **Glacier** | ![](docs/screenshots/theme-dusk.png) **Neon Dusk** |
 | ![](docs/screenshots/theme-graphite.png) **Graphite** | ![](docs/screenshots/theme-paper.png) **Paper** |
 
+## Basic mod
+
+Başlıktaki `BASIC MODE` butonu ya da `B` tuşu ekrandaki ek detayları gizler.
+Geriye sadece agent'lar, görev listesi, görev yüzdesi, limit yüzdeleri ve
+CPU/GPU kullanımı kalır. Seçim tarayıcıda hatırlanır; URL'den de seçilebilir:
+`?mode=basic`.
+
+GPU kullanımı NVIDIA kartlarda `nvidia-smi` ile okunur (Windows ve Linux).
+Başka kartlarda GPU satırı "no GPU data" gösterir.
+
+![Basic mod](docs/screenshots/basic-mode.png)
+
 ## Klavye
 
-`T` tema · `1–9` paneli büyüt · `ESC` grid'e dön · `P` hepsini durdur · `R` hepsini sürdür
+`T` tema · `B` basic mod · `1–9` paneli büyüt · `ESC` grid'e dön · `P` hepsini durdur · `R` hepsini sürdür
 
 ## Nasıl çiziliyor
 

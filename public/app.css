@@ -227,6 +227,8 @@ i { font-style: normal; }
 @keyframes ack { 0% { background-size: 100% 100%; color: var(--bg); filter: brightness(1.6); } 100% { filter: none; } }
 .btn.on { color: var(--accent); }
 
+a.btn.credit { color: var(--accent); }
+
 /* ───────────────────────────── theme menu ───────────────────────────── */
 .menu {
   --frame: color-mix(in srgb, var(--accent) 60%, var(--faint));

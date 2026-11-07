@@ -145,12 +145,12 @@ server.registerTool('provider_usage_get', {
 
 server.registerTool('system_stats', {
   title: 'Host CPU / RAM',
-  description: 'Current CPU % (total and per core), load average and RAM usage of the machine running the monitor hub.',
+  description: 'Current CPU % (total and per core), load average, RAM and GPU (NVIDIA via nvidia-smi) usage of the machine running the monitor hub.',
   inputSchema: {},
 }, guard(async () => {
   const s = await client.system();
   if (!s) return ok({ note: 'no sample yet' });
-  return ok({ cpu: +s.cpu.toFixed(1), cores: s.cores.map((c) => +c.toFixed(0)), load: s.load.map((l) => +l.toFixed(2)), memUsedGB: +(s.memUsed / 2 ** 30).toFixed(2), memTotalGB: +(s.memTotal / 2 ** 30).toFixed(2), memPct: +((s.memUsed / s.memTotal) * 100).toFixed(1) });
+  return ok({ cpu: +s.cpu.toFixed(1), cores: s.cores.map((c) => +c.toFixed(0)), load: s.load.map((l) => +l.toFixed(2)), memUsedGB: +(s.memUsed / 2 ** 30).toFixed(2), memTotalGB: +(s.memTotal / 2 ** 30).toFixed(2), memPct: +((s.memUsed / s.memTotal) * 100).toFixed(1), gpu: s.gpu ? { name: s.gpu.name, util: +s.gpu.util.toFixed(1), vramUsedGB: +(s.gpu.memUsed / 2 ** 30).toFixed(2), vramTotalGB: +(s.gpu.memTotal / 2 ** 30).toFixed(2) } : null });
 }));
 
 server.registerTool('monitor_reset', {

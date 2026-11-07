@@ -4,6 +4,7 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import os from 'node:os';
+import { execFile } from 'node:child_process';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
@@ -40,7 +41,32 @@ function memory() {
   } catch {}
   return { total, used: total - avail };
 }
+// GPU via nvidia-smi (NVIDIA on Windows/Linux). Absent tool → no GPU row data.
+function gpuSampler(interval = 2000) {
+  let last = null, disabled = false;
+  const run = () => {
+    if (disabled) return;
+    execFile('nvidia-smi', ['--query-gpu=utilization.gpu,memory.used,memory.total,name', '--format=csv,noheader,nounits'], { timeout: 1500, windowsHide: true }, (err, out) => {
+      if (err) { if (err.code === 'ENOENT') disabled = true; last = null; return; }
+      const rows = out.trim().split(/\r?\n/).map((l) => l.split(',').map((x) => x.trim())).filter((r) => r.length >= 4);
+      if (!rows.length) { last = null; return; }
+      const n = rows.length;
+      last = {
+        name: n > 1 ? `${n}× ${rows[0][3]}` : rows[0][3],
+        util: rows.reduce((a, r) => a + Number(r[0] || 0), 0) / n,
+        memUsed: rows.reduce((a, r) => a + Number(r[1] || 0), 0) * 2 ** 20,
+        memTotal: rows.reduce((a, r) => a + Number(r[2] || 0), 0) * 2 ** 20,
+      };
+    });
+  };
+  run();
+  const t = setInterval(run, interval);
+  t.unref?.();
+  return { get: () => last, stop: () => clearInterval(t) };
+}
+
 export function startSystemSampler(store, interval = 1000) {
+  const gpu = process.env.AGENT_MONITOR_GPU === '0' ? { get: () => null, stop() {} } : gpuSampler();
   let prev = cpuTimes();
   const tick = () => {
     const cur = cpuTimes();
@@ -61,11 +87,12 @@ export function startSystemSampler(store, interval = 1000) {
       memUsed: mem.used,
       memTotal: mem.total,
       rss: process.memoryUsage().rss,
+      gpu: gpu.get(),
     });
   };
   const timer = setInterval(tick, interval);
   timer.unref?.();
-  return () => clearInterval(timer);
+  return () => { clearInterval(timer); gpu.stop(); };
 }
 
 export function createHub({ store = new Store(), log = () => {}, sampleSystem = true } = {}) {
