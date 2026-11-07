@@ -49,7 +49,7 @@ server.registerTool('monitor_set_session', {
 
 server.registerTool('agent_register', {
   title: 'Register a sub-agent',
-  description: 'Add a sub-agent pane to the dashboard. Call once right before you launch the sub-agent. Returns its id; pass that id to every later call.',
+  description: 'Create or refresh YOUR OWN pane on the dashboard. Sub-agents call this about themselves as their first action, using the id the orchestrator gave them. Re-registering an id only updates it.',
   inputSchema: {
     id: z.string().optional().describe('Stable id (slug). Generated from name if omitted. Re-registering an id updates it.'),
     name: z.string().describe('Short display name, e.g. "test-writer"'),
@@ -65,7 +65,7 @@ server.registerTool('agent_register', {
 
 server.registerTool('agent_update', {
   title: 'Update a sub-agent',
-  description: 'Update status, progress %, current step, limits, metrics, and/or append a log line. The dashboard is read-only: it only displays what you report.',
+  description: 'Report your own progress as a sub-agent: status, current step, progress %, limits, tokens and/or a log line. Call on every step change; during long steps at least every 2 minutes (panes with no update for 3 minutes are flagged SILENT).',
   inputSchema: {
     id: z.string(),
     status: status.optional(),
@@ -91,7 +91,7 @@ server.registerTool('agent_log', {
 
 server.registerTool('agent_complete', {
   title: 'Finish a sub-agent',
-  description: 'Mark the sub-agent finished: success=true -> done (100%), success=false -> error.',
+  description: 'Close your own pane when you finish: success=true -> done (100%), success=false -> error. The orchestrator may also call it once for a sub-agent that died before it could report.',
   inputSchema: { id: z.string(), success: z.boolean().default(true), message: z.string().optional() },
 }, guard(async ({ id, success, message }) => ok(brief(await client.update(id, {
   status: success ? 'done' : 'error', message: message ?? (success ? 'completed' : 'failed'), level: success ? 'success' : 'error',

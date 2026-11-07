@@ -502,7 +502,12 @@ class Pane {
     let label = st.label;
     if (this.scr) { const k = (t - this.scr.from) / 420; if (k >= 1 || reduced) this.scr = null; else label = scramble(st.label, k); }
     const idx = L().t('╭─┤', 'fr').t(` ${pad2(index + 1)} `, 'b').t('├', 'fr');
-    const stat = L().t('┤', 'fr').t(` ${ico} `, 'pc').t(` ${label} `, a.status === 'paused' ? 'badge paused-blink' : 'badge').t(' ').t('├─╮', 'fr');
+    // self-reporting agents can die quietly: flag active panes with no update for 3 min
+    const quiet = now() - a.updatedAt;
+    const silent = ACTIVE.has(a.status) && quiet > 180000;
+    const stat = L().t('┤', 'fr').t(` ${ico} `, 'pc');
+    if (silent) stat.t(` SILENT ${dur(quiet)} `, 'badge silent').t(' ', '');
+    stat.t(` ${label} `, a.status === 'paused' ? 'badge paused-blink' : 'badge').t(' ').t('├─╮', 'fr');
     this.block.set(0, idx.fill(w - stat.n, '─', 'fr').merge(stat).html(w));
 
     // ── body rows

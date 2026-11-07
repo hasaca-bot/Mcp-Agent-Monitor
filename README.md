@@ -32,7 +32,13 @@ MCP sunucusu açılınca çalışan bir hub arar. Bulamazsa hub'ı kendi içinde
 başlatır, böylece dashboard her zaman `http://127.0.0.1:7420` adresinde olur.
 Port için `AGENT_MONITOR_PORT`, uzak hub için `AGENT_MONITOR_URL` kullanılır.
 
-Orkestratör agent'ın nasıl rapor vereceği
+Rapor verme işini **her alt agent kendisi yapar**: ana model (orkestratör)
+yalnızca her alt agent'a bir id verir ve prompt'una kısa bir "self-report"
+bloğu ekler. Alt agent kendi panelini açar; durumunu, adımını, yüzdesini ve
+limitlerini kendisi günceller, bitince kapatır. 3 dakika boyunca güncelleme
+göndermeyen aktif paneller ekranda **SILENT** olarak işaretlenir.
+
+Hem orkestratörün hem alt agent'ların ne yapacağı
 [`.claude/skills/agent-monitor/SKILL.md`](.claude/skills/agent-monitor/SKILL.md)
 içinde anlatılıyor. Claude Code bu skill'i otomatik olarak yükler.
 

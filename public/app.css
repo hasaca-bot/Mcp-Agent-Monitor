@@ -154,6 +154,7 @@ i { font-style: normal; }
 @keyframes pane-out { to { opacity: 0; transform: scale(.98); filter: blur(2px); } }
 
 .badge { color: var(--bg); background: var(--pc); font-weight: 700; text-shadow: none; border-radius: 2px; }
+.badge.silent { background: var(--wait); animation: blink 1.6s steps(1) infinite; }
 .paused-blink { animation: blink 1.6s steps(1) infinite; }
 @keyframes blink { 50% { opacity: .35; } }
 
