@@ -25,7 +25,7 @@ and give it to the user the first time).
 | `agent_log {id, message, level?}` | a single notable line (tool call, result, warning) |
 | `agent_complete {id, success, message?}` | when the sub-agent returns |
 | `agent_check_control {id}` | poll for operator commands while waiting on a long sub-agent |
-| `provider_usage_set {provider, plan, limits[]}` | at start and whenever you learn new limit numbers (bottom PROVIDER box) |
+| `provider_usage_set {provider, plan, limits[], source?}` | at start and whenever you learn new limit numbers — one row per harness/provider in the LIMITS box |
 | `provider_usage_get`, `system_stats` | check headroom / host CPU+RAM before spawning more agents |
 | `agent_list`, `agent_remove {id}`, `monitor_reset` | housekeeping |
 
@@ -70,9 +70,14 @@ Log levels: `tool` (a tool call), `info`, `success`, `warn`, `error`.
      drives the activity sparkline.
    Don't spam: one update per step change or notable event, roughly every
    few seconds at most per agent.
-4. **Limits.** Report plan / rate limits you know about with
-   `provider_usage_set` (e.g. from `anthropic-ratelimit-*` response headers,
-   `/usage`, or the plan the user told you). If a limit shown on any pane or
+4. **Limits.** Report the limits of the harness *you* run in with
+   `provider_usage_set`, using its product name as `provider` ("Claude Code",
+   "Codex", "OpenCode", "Antigravity", or the raw API name) so every tool gets
+   its own row; sub-agents running in a different harness report theirs under
+   that name. Sources: `/usage` or `/status` output, `*-ratelimit-*` response
+   headers, or the plan the user told you; put that in `source`. Codex rows are
+   also filled automatically from `~/.codex/sessions` when the hub runs on the
+   same machine. If a limit shown on any pane or
    in the PROVIDER box is ≥ 90 %, or `system_stats` shows CPU/RAM ≥ 90 %,
    do not spawn new sub-agents; queue them (`status: "queued"`) instead.
 5. **Obey the operator.** Every `agent_update` / `agent_log` response contains

@@ -94,21 +94,31 @@ const MODEL_CAPS = {
   haiku: { id: 'model-rpm', label: 'rate req/min', unit: 'req', used: 22, limit: 50, resetsInMs: MIN },
 };
 const agentLimits = (a) => (MODEL_CAPS[a.model] ? [MODEL_CAPS[a.model]] : []);
-export const USAGE = {
-  provider: 'anthropic',
-  plan: 'Max 20x',
-  limits: [
-    { id: 'session', label: '5h session', unit: 'tok', used: 1_312_000, limit: 2_200_000, resetsInMs: HOUR + 47 * MIN, auto: true },
+export const USAGE = [
+  { provider: 'Claude Code', plan: 'Max 20x', source: '/usage', limits: [
+    { id: 'session', label: '5h session', unit: '%', used: 61.3, resetsInMs: HOUR + 47 * MIN },
     { id: 'weekly', label: 'weekly · all', unit: '%', used: 38.2, resetsInMs: 3 * DAY + 4 * HOUR },
     { id: 'weekly-opus', label: 'weekly · opus', unit: '%', used: 71.4, resetsInMs: 3 * DAY + 4 * HOUR },
-    { id: 'tpm', label: 'rate tok/min', unit: 'tok', used: 182_000, limit: 400_000, resetsInMs: MIN },
-  ],
-  rate: { rpm: 38 },
-};
+  ] },
+  { provider: 'Codex', plan: 'ChatGPT Plus', source: '~/.codex sessions', limits: [
+    { id: 'primary', label: '5h window', unit: '%', used: 82.0, resetsInMs: 3 * HOUR + 14 * MIN },
+    { id: 'secondary', label: 'weekly', unit: '%', used: 44.0, resetsInMs: 5 * DAY },
+  ] },
+  { provider: 'OpenCode', plan: 'Anthropic API', source: 'rate-limit headers', limits: [
+    { id: 'itpm', label: 'input tok/min', unit: 'tok', used: 182_000, limit: 400_000, resetsInMs: MIN },
+    { id: 'spend', label: 'month spend', unit: '$', used: 41.8, limit: 100, resetsInMs: 23 * DAY },
+  ] },
+  { provider: 'Antigravity', plan: 'Pro', source: 'reported', limits: [
+    { id: 'quota', label: 'model quota', unit: '%', used: 27.5, resetsInMs: 4 * HOUR + 2 * MIN },
+  ] },
+  { provider: 'Session budget', source: 'auto · agent tokens', limits: [
+    { id: 'tokens', label: 'session tokens', unit: 'tok', used: 312_000, limit: 2_000_000, auto: true },
+  ] },
+];
 
 // `api.usage(p)` is optional (Store.setUsage in the browser, REST client in Node).
 export async function seed(api) {
-  if (api.usage) await api.usage(USAGE);
+  if (api.usage) for (const u of USAGE) await api.usage(u);
   for (const a of AGENTS) {
     await api.register({ id: a.id, name: a.name, role: a.role, model: a.model, task: a.task, steps: a.steps, status: 'running', limits: agentLimits(a) });
     for (const [m, l] of a.logs) await api.log(a.id, m, l);
@@ -172,11 +182,9 @@ export function simulate(api, getAgents, { interval = 650, rand = Math.random } 
         if (cap && l) await api.update(a.id, { limits: [{ id: cap.id, used: cap.unit === 'req' ? Math.round(10 + rand() * 38) : Math.min(100, l.used + 0.02), resetsAt: l.resetsAt }] });
       }
       if (api.usage && n % 4 === 0) {
-        await api.usage({ limits: [
-          { id: 'tpm', used: Math.round(120_000 + rand() * 170_000), resetsInMs: MIN },
-          { id: 'weekly', used: Math.min(100, 38.2 + n * 0.004) },
-          { id: 'weekly-opus', used: Math.min(100, 71.4 + n * 0.006) },
-        ], rate: { rpm: Math.round(30 + rand() * 20) } });
+        await api.usage({ provider: 'OpenCode', limits: [{ id: 'itpm', used: Math.round(120_000 + rand() * 170_000), resetsInMs: MIN }] });
+        await api.usage({ provider: 'Claude Code', limits: [{ id: 'session', used: Math.min(100, 61.3 + n * 0.01) }, { id: 'weekly-opus', used: Math.min(100, 71.4 + n * 0.004) }] });
+        await api.usage({ provider: 'Codex', limits: [{ id: 'primary', used: Math.min(100, 82 + n * 0.006) }] });
       }
     } catch { /* agent removed meanwhile */ }
   }, interval);

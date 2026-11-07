@@ -124,13 +124,16 @@ server.registerTool('agent_remove', {
 
 server.registerTool('provider_usage_set', {
   title: 'Report provider usage limits',
-  description: 'Show the model provider\'s usage / rate limits on the dashboard (e.g. plan session window, weekly cap, tokens-per-minute from rate-limit headers). Call at session start and whenever you learn new numbers. Limits merge by id.',
+  description: 'Show usage / rate limits for one provider or agent harness on the dashboard. Every tool gets its own row: call once per harness/provider you know about (e.g. "Claude Code", "Codex", "OpenCode", "Antigravity", "OpenAI API"). Limits merge by id within that provider. Call at session start and whenever you learn new numbers.',
   inputSchema: {
-    provider: z.string().optional().describe('e.g. "anthropic", "openai"'),
+    provider: z.string().describe('Display name; also the row key, e.g. "Claude Code", "Codex", "OpenCode", "Antigravity"'),
+    id: z.string().optional().describe('Row key if different from provider'),
+    source: z.string().optional().describe('Where the numbers came from, e.g. "/usage", "rate-limit headers", "~/.codex sessions"'),
+    remove: z.boolean().optional().describe('Remove this provider row'),
     plan: z.string().optional().describe('e.g. "Max 20x", "API tier 4"'),
     limits: z.array(limit).optional(),
     rate: z.record(z.union([z.number(), z.string()])).optional().describe('Free-form current rates, e.g. {"rpm": 42}'),
-    replace: z.boolean().optional().describe('Drop existing limits first'),
+    replace: z.boolean().optional().describe('Drop this provider\'s existing limits first'),
   },
 }, guard(async (args) => ok(await client.usage(args))));
 

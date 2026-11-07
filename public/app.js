@@ -26,7 +26,7 @@ const ST = {
   queued:   { label: 'QUEUED',   cls: 'c-queue', frames: ['○'] },
 };
 const ACTIVE = new Set(['running', 'thinking', 'waiting']);
-const ICONS = new Set([...'●○◆◇▶■□‖✓✗✕▸›▖▘▝▗·∙•▒◢']);
+const ICONS = new Set([...'●○◆◇▶■□‖✓✗✕▸›▖▘▝▗·∙•▒«']);
 const LOGO = [
   ['▄▀█ █▀▀ █▀▀ █▚ █ ▀█▀', '█▚▞█ █▀█ █▚ █ █ ▀█▀ █▀█ █▀█'],
   ['█▀█ █▄█ ██▄ █ ▚█  █ ', '█  █ █▄█ █ ▚█ █  █  █▄█ █▀▄'],
@@ -81,7 +81,8 @@ class Line {
       const body = p.raw ? text : iconize(text);
       const n = len(text);
       // runs are pinned to an exact cell width so sub-pixel glyph rounding can't drift the grid
-      out += n > 2 ? `<span class="c ${p.cls}" style="--n:${n}">${body}</span>` : p.cls ? `<span class="${p.cls}">${body}</span>` : body;
+      // every run is pinned to an exact cell width: even if a glyph falls back to another font the grid cannot drift
+      out += `<span class="c ${p.cls}" style="--n:${n}">${body}</span>`;
       used += n;
     }
     if (used < width) out += ' '.repeat(width - used);
@@ -145,7 +146,7 @@ function strokeMetrics() {
   c.width = 40 * S; c.height = 80 * S;
   const x = c.getContext('2d');
   x.scale(S, S);
-  x.font = `400 ${fs}px "JetBrains Mono", monospace`;
+  x.font = `400 ${fs}px "AM Mono", monospace`;
   x.textBaseline = 'alphabetic';
   const by = 50;
   x.fillText('─', 5, by);
@@ -253,9 +254,9 @@ function onEvent(evt) {
   else if (evt.type === 'remove') app.agents.delete(evt.id);
   else if (evt.type === 'reset') app.agents.clear();
   else if (evt.type === 'session') app.session = { ...evt.session };
-  else if (evt.type === 'usage') { app.usage = structuredClone(evt.usage); return; }
+  else if (evt.type === 'usage') { app.usage = structuredClone(evt.usage); if (teleRows() !== app.teleN) layout(); return; }
   else if (evt.type === 'system') { pushSystem(evt.system); return; }
-  if (evt.type === 'snapshot') { app.usage = evt.usage || null; if (evt.system) pushSystem(evt.system); }
+  if (evt.type === 'snapshot') { app.usage = evt.usage || null; if (evt.system) pushSystem(evt.system); if (teleRows() !== app.teleN) layout(); }
   if (app.focus && !app.agents.has(app.focus)) app.focus = null;
   app.dirty = true;
 }
@@ -351,7 +352,7 @@ function renderHeader(t) {
   // bottom border with global actions
   const theme = THEMES.find((x) => x.id === app.theme) || THEMES[0];
   const bl = L().t('╰─', 'fr');
-  if (app.focus) { const b = btn(' ◢ BACK TO GRID ', 'unfocus'); bl.t('┤', 'fr').h(b.html, b.n).t('├─', 'fr'); }
+  if (app.focus) { const b = btn(' « BACK TO GRID ', 'unfocus'); bl.t('┤', 'fr').h(b.html, b.n).t('├─', 'fr'); }
   const actions = [btn(' ‖ PAUSE ALL ', 'pause-all'), btn(' ▶ RESUME ALL ', 'resume-all', '', 'ok'), btn(` ▒ THEME · ${theme.name.toUpperCase()} `, 'theme-menu', '', app.menu ? 'on' : '')];
   const br = L();
   actions.forEach((a, i) => br.t('┤', 'fr').h(a.html, a.n).t(i < actions.length - 1 ? '├─' : '├', 'fr'));
@@ -523,7 +524,7 @@ class Pane {
     else acts.push(btn(' ▶ RETRY ', 'retry', a.id, 'ok'), btn(' ✕ DISMISS ', 'dismiss', a.id, 'danger'));
     const bl = L().t('╰─', 'fr');
     for (const b2 of acts) bl.t('┤', 'fr').h(b2.html, b2.n).t('├─', 'fr');
-    const f = btn(app.focus === a.id ? ' ◢ GRID ' : ' □ FOCUS ', app.focus === a.id ? 'unfocus' : 'focus', a.id);
+    const f = btn(app.focus === a.id ? ' « GRID ' : ' □ FOCUS ', app.focus === a.id ? 'unfocus' : 'focus', a.id);
     const br = L().t('┤', 'fr').h(f.html, f.n).t('├─╯', 'fr');
     this.block.set(h - 1, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
   }
@@ -575,10 +576,11 @@ function layout() {
   header.place(MX, 0, COLS - MX * 2, 4);
   footer.place(MX, ROWS - 1, COLS - MX * 2, 1);
   header.cache.fill(null); footer.cache.fill(null);
-  const TH = 4; // telemetry strip rows
+  const TH = teleRows() + 2; // telemetry strip rows (one per provider, min 2)
+  app.teleN = teleRows();
   gridArea = { x: MX, y: 5, w: COLS - MX * 2, h: ROWS - 5 - 2 - TH - 1 };
   const ty = gridArea.y + gridArea.h + 1;
-  const sysW = Math.max(56, Math.min(96, Math.floor(gridArea.w * 0.38)));
+  const sysW = Math.max(56, Math.min(84, Math.floor(gridArea.w * 0.32)));
   sysBox.place(MX, ty, sysW, TH);
   provBox.place(MX + sysW + GX, ty, gridArea.w - sysW - GX, TH);
   sysBox.cache.fill(null); provBox.cache.fill(null);
@@ -643,7 +645,7 @@ const dur = (ms) => {
   const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
   return d ? `${d}d ${h}h` : h ? `${h}h ${pad2(m % 60)}m` : m ? `${m}m` : `${Math.ceil(ms / 1000)}s`;
 };
-const amount = (v, unit) => (unit === '$' ? '$' + v.toFixed(2) : unit === 'req' ? String(Math.round(v)) : kfmt(v));
+const amount = (v, unit) => (unit === '$' ? '$' + v.toFixed(v >= 10 ? 0 : 2) : unit === 'req' ? String(Math.round(v)) : kfmt(v));
 const frameRow = (W, inner, w) => L().t('│', 'fr').sp(1).h(inner.html(W), W).sp(1).t('│', 'fr').html(w);
 let cpuShown = 0, memShown = 0;
 
@@ -672,8 +674,12 @@ function renderSystem(t) {
     const bars = s.cores.slice(0, Math.max(4, w - 30)).map((v) => `<span class="${lvl(v)}">${SPARK[Math.min(7, Math.floor((v / 100) * 7.999))]}</span>`).join('');
     bl.t('┤', 'fr').t(' cores ', 'dim').h(`<span class="c spark" style="--n:${Math.min(s.cores.length, Math.max(4, w - 30))}">${bars}</span>`, Math.min(s.cores.length, Math.max(4, w - 30))).sp(1).t('├', 'fr');
   }
+  for (let i = 3; i < b.h - 1; i++) {
+    if (i === 3 && s) b.set(i, frameRow(W, L().t('cpu ', 'dim').t(s.model, 'faint'), w));
+    else b.set(i, frameRow(W, L(), w));
+  }
   const br = L().t('┤', 'fr').t(s ? ` hub ${mb(s.rss)} MB ` : ' — ', 'faint').t('├─╯', 'fr');
-  b.set(3, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
+  b.set(b.h - 1, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
 }
 
 const limitPct = (l) => (l.unit === '%' ? l.used : l.limit ? (l.used / l.limit) * 100 : 0);
@@ -697,44 +703,50 @@ function burnRate(t) {
   return t1 > t0 ? Math.max(0, ((v1 - v0) / (t1 - t0)) * 60000) : 0;
 }
 
+const providers = () => app.usage?.providers || [];
+const teleRows = () => Math.max(2, Math.min(5, providers().length));
+
 function renderProvider(t) {
-  const b = provBox, w = b.w, W = w - 4;
+  const b = provBox, w = b.w, W = w - 4, rows = b.h - 2;
   if (!w) return;
-  const u = app.usage;
+  const list = providers();
   const burn = burnRate(t);
-  const right = L().t('┤', 'fr').t(' burn ', 'dim').t(`${kfmt(burn)} tok/min`, 'b').t(u ? ` · upd ${ago(t - u.updatedAt)} ` : ' ', 'dim').t('├─╮', 'fr');
-  b.set(0, L().t('╭─┤', 'fr').t(' PROVIDER ', 'b acc').t('├─', 'fr').t(u ? ` ${u.provider}` : '', 'b').t(u?.plan ? ` · ${u.plan} ` : ' ', 'dim').fill(w - right.n, '─', 'fr').merge(right).html(w));
-  const limits = u?.limits || [];
-  if (!limits.length) {
-    b.set(1, frameRow(W, L().t('no usage reported yet · call ', 'dim').t('provider_usage_set', 'b').t(' over MCP', 'dim'), w));
-    b.set(2, frameRow(W, L().t('limits merge by id · unit "tok" + auto:true tracks agent tokens automatically', 'faint'), w));
+  const right = L().t('┤', 'fr').t(' burn ', 'dim').t(`${kfmt(burn)} tok/min`, 'b').t(' ').t('├─╮', 'fr');
+  b.set(0, L().t('╭─┤', 'fr').t(' LIMITS ', 'b acc').t('├─', 'fr').t(` ${list.length} provider${list.length === 1 ? '' : 's'} `, 'dim').fill(w - right.n, '─', 'fr').merge(right).html(w));
+  if (!list.length) {
+    b.set(1, frameRow(W, L().t('no limits reported yet · each harness calls ', 'dim').t('provider_usage_set', 'b'), w));
+    b.set(2, frameRow(W, L().t('Claude Code · Codex · OpenCode · Antigravity · any API — one row each', 'faint'), w));
+    for (let i = 3; i <= rows; i++) b.set(i, frameRow(W, L(), w));
   } else {
-    const cols = W >= 120 ? 2 : 1;
-    const cw = Math.floor((W - (cols - 1) * 3) / cols);
-    for (let r = 0; r < 2; r++) {
-      const line = L();
-      for (let c = 0; c < cols; c++) {
-        const l = limits[r * cols + c];
-        if (c) line.t(' │ ', 'faint');
-        if (!l) { line.sp(cw); continue; }
-        const cell = limitCell(l, cw, t);
-        line.h(cell.html(cw), cw);
-      }
+    const nameW = Math.min(32, Math.max(...list.map((p) => len(p.provider) + (p.plan ? len(p.plan) + 1 : 0))) + 4);
+    const maxN = Math.max(...list.map((p) => p.limits.length), 1);
+    const per = Math.max(1, Math.min(maxN, Math.floor((W - nameW) / 40)));
+    const cw = Math.floor((W - nameW - (per - 1) * 3) / per);
+    for (let r = 0; r < rows; r++) {
+      const pr = list[r];
+      if (!pr) { b.set(1 + r, frameRow(W, L(), w)); continue; }
+      const worst = Math.max(0, ...pr.limits.map(limitPct));
+      const stale = t - pr.updatedAt > 15 * 60000;
+      const name = L().t('● ', stale ? 'faint' : lvl(worst)).t(pr.provider, 'b').t(pr.plan ? ' ' + pr.plan : '', 'dim');
+      const line = L().h(name.html(nameW), nameW);
+      const shown = [...pr.limits].sort((x, y) => limitPct(y) - limitPct(x)).slice(0, per);
+      shown.forEach((l, i) => { if (i) line.t(' │ ', 'faint'); line.h(limitCell(l, cw, t, 13).html(cw), cw); });
+      if (pr.limits.length > per) line.t(` +${pr.limits.length - per}`, 'faint');
       b.set(1 + r, frameRow(W, line, w));
     }
   }
-  // forecast in the bottom border: when does the first auto/token window fill at this burn rate?
+  // forecast: first auto-tracked token window at the current burn rate
   const bl = L().t('╰─', 'fr');
-  const tokLimit = limits.find((l) => l.unit === 'tok' && l.auto) || limits.find((l) => l.unit === 'tok' && l.id !== 'tpm');
+  const all = list.flatMap((p) => p.limits.map((l) => ({ ...l, who: p.provider })));
+  const tokLimit = all.find((l) => l.unit === 'tok' && l.auto);
   if (tokLimit && burn > 0) {
-    const left = Math.max(0, tokLimit.limit - tokLimit.used);
-    const eta = (left / burn) * 60000;
+    const eta = (Math.max(0, tokLimit.limit - tokLimit.used) / burn) * 60000;
     const before = tokLimit.resetsAt && eta < tokLimit.resetsAt - t;
-    bl.t('┤', 'fr').t(` at this burn ${tokLimit.label} fills in `, 'dim').t(dur(eta), `b ${before ? 'lvl-warn' : 'lvl-ok'}`).t(before ? ' · before reset ' : ' · after reset ✓ ', before ? 'lvl-warn' : 'dim').t('├', 'fr');
+    bl.t('┤', 'fr').t(` ${tokLimit.label} full in `, 'dim').t(dur(eta), `b ${before ? 'lvl-warn' : 'lvl-ok'}`).t(' at this burn ', 'dim').t('├', 'fr');
   }
-  const over = limits.filter((l) => (l.unit === '%' ? l.used : (l.used / (l.limit || 1)) * 100) >= 90).length;
-  const br = L().t('┤', 'fr').t(over ? ` ✗ ${over} limit${over > 1 ? 's' : ''} ≥90% ` : ' ✓ within limits ', over ? 'lvl-crit b' : 'faint').t('├─╯', 'fr');
-  b.set(3, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
+  const over = all.filter((l) => limitPct(l) >= 90);
+  const br = L().t('┤', 'fr').t(over.length ? ` ✗ ${over.map((l) => l.who).filter((v, i, a) => a.indexOf(v) === i).join(', ')} ≥90% ` : ' ✓ all within limits ', over.length ? 'lvl-crit b' : 'faint').t('├─╯', 'fr');
+  b.set(b.h - 1, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
 }
 
 /* ───────────────────────────── theme menu ───────────────────────────── */
@@ -830,7 +842,7 @@ function frame() {
 }
 
 await document.fonts.ready.catch(() => {});
-await document.fonts.load('400 13px "JetBrains Mono"').catch(() => {});
+await Promise.all(['400', '700', '800'].map((w) => document.fonts.load(`${w} 13px "AM Mono"`, '─│█').catch(() => {})));
 layout();
 await connect();
 requestAnimationFrame(frame);

@@ -216,27 +216,29 @@ export class Store extends EventEmitter {
     this.emit('change', { type: 'reset' });
   }
 
-  // Provider usage limits. Limits merge by id; `auto: true` limits in tokens
-  // are advanced automatically by every agent's tokensDelta.
+  // Usage limits for any number of providers / harnesses (Claude Code,
+  // Codex, OpenCode, Antigravity, raw APIs…), keyed by provider id.
+  // Limits merge by id; `auto: true` token limits advance with agent tokensDelta.
   setUsage(p = {}) {
     const now = Date.now();
-    const u = (this.usage ??= { provider: 'provider', plan: null, limits: [], rate: {}, updatedAt: now });
-    if (p.provider !== undefined) u.provider = p.provider;
-    if (p.plan !== undefined) u.plan = p.plan;
-    if (p.rate) Object.assign(u.rate, p.rate);
-    if (p.replace) u.limits = [];
-    mergeLimits(u.limits, p.limits, now);
-    u.updatedAt = now;
+    const u = (this.usage ??= { providers: [] });
+    const id = slug(p.id || p.provider || 'provider');
+    if (p.remove) { u.providers = u.providers.filter((x) => x.id !== id); this.emit('change', { type: 'usage', usage: u }); return u; }
+    let pr = u.providers.find((x) => x.id === id);
+    if (!pr) { pr = { id, provider: p.provider || id, plan: null, source: null, limits: [], rate: {}, updatedAt: now }; u.providers.push(pr); }
+    for (const k of ['provider', 'plan', 'source']) if (p[k] !== undefined) pr[k] = p[k];
+    if (p.rate) Object.assign(pr.rate, p.rate);
+    if (p.replace) pr.limits = [];
+    mergeLimits(pr.limits, p.limits, now);
+    pr.updatedAt = now;
     this.emit('change', { type: 'usage', usage: u });
-    return u;
+    return pr;
   }
 
   #autoUsage(delta) {
-    const u = this.usage;
-    if (!u) return;
     let hit = false;
-    for (const l of u.limits) if (l.auto && l.unit === 'tok') { l.used += delta; hit = true; }
-    if (hit) { u.updatedAt = Date.now(); this.emit('change', { type: 'usage', usage: u }); }
+    for (const pr of this.usage?.providers || []) for (const l of pr.limits) if (l.auto && l.unit === 'tok') { l.used += delta; pr.updatedAt = Date.now(); hit = true; }
+    if (hit) this.emit('change', { type: 'usage', usage: this.usage });
   }
 
   setSystem(sys) {

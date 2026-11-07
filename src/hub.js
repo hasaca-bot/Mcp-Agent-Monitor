@@ -7,6 +7,7 @@ import os from 'node:os';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
+import { startCodexCollector } from './collectors/codex.js';
 
 const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.json': 'application/json' };
@@ -70,6 +71,7 @@ export function startSystemSampler(store, interval = 1000) {
 export function createHub({ store = new Store(), log = () => {}, sampleSystem = true } = {}) {
   const clients = new Set();
   const stopSampler = sampleSystem ? startSystemSampler(store) : () => {};
+  const stopCodex = process.env.AGENT_MONITOR_COLLECT === '0' ? () => {} : startCodexCollector(store, { log });
 
   store.on('change', (evt) => {
     const line = `event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`;
@@ -136,6 +138,6 @@ export function createHub({ store = new Store(), log = () => {}, sampleSystem = 
         server.listen(port, host, () => { server.off('error', reject); resolve(server.address()); });
       });
     },
-    close() { stopSampler(); for (const r of clients) r.end(); return new Promise((r) => server.close(r)); },
+    close() { stopSampler(); stopCodex(); for (const r of clients) r.end(); return new Promise((r) => server.close(r)); },
   };
 }

@@ -46,7 +46,7 @@ içinde anlatılıyor. Claude Code bu skill'i otomatik olarak yükler.
 | `agent_log {id, message, level?}` | log satırı ekler |
 | `agent_complete {id, success, message?}` | `done` ya da `error` olarak bitirir |
 | `agent_check_control {id}` | bekleyen pause/stop/resume/retry komutunu okur ve tüketir |
-| `provider_usage_set {provider, plan, limits[]}` | alt kutudaki PROVIDER panelini (plan, 5 saatlik pencere, haftalık limit, rate limit) günceller |
+| `provider_usage_set {provider, plan, limits[], source?}` | alttaki LIMITS kutusunda o sağlayıcının/aracın satırını günceller. Her araç kendi satırını alır (Claude Code, Codex, OpenCode, Antigravity, ham API…) |
 | `provider_usage_get` · `system_stats` | limit durumu · makinenin CPU/RAM bilgisi |
 | `agent_list`, `agent_remove {id}`, `monitor_reset` | listeleme ve temizlik |
 
@@ -58,9 +58,26 @@ eklenir.
 
 Ekranın altında iki kutu var. **SYSTEM** kutusu CPU ve RAM'i (meter, geçmiş
 grafiği, load average, çekirdek başına ısı şeridi) gösterir; değerleri hub
-saniyede bir işletim sisteminden okur. **PROVIDER** kutusu sağlayıcı
-limitlerini, reset sürelerini, dakikalık token harcamasını ve "bu hızla 5h
-penceresi X dakikada dolar" tahminini gösterir.
+saniyede bir işletim sisteminden okur. **LIMITS** kutusu her sağlayıcı ya da
+araç için ayrı bir satır gösterir: plan, en dolu limitler, reset süreleri,
+dakikalık token harcaması ve "bu hızla X dakikada dolar" tahmini. Kutu,
+sağlayıcı sayısına göre 5 satıra kadar büyür.
+
+**Codex otomatik okunur:** Hub, Codex CLI'nin yerel oturum loglarındaki
+(`~/.codex/sessions`, ya da `$CODEX_HOME`) `rate_limits` kayıtlarını 30 saniyede
+bir okur, 5 saatlik ve haftalık pencereleri kendiliğinden gösterir.
+Kapatmak için `AGENT_MONITOR_COLLECT=0` kullanılır. Diğer araçlar (Claude Code,
+OpenCode, Antigravity) limitlerini yerel bir dosyada yayınlamadığı için o
+araçlarda çalışan agent `provider_usage_set` ile bildirir (örneğin `/usage`
+çıktısından ya da API'nin `ratelimit` header'larından).
+
+**Paylaşılabilir demo:** `node scripts/build-standalone.mjs dist/agent-monitor.html`
+komutu fontları, CSS'i ve JS'i tek bir HTML dosyasına gömer. Bu dosya sunucu
+olmadan sahte verilerle çalışır.
+
+Font: JetBrains Mono (SIL OFL 1.1, `public/fonts/OFL.txt`) projeye gömülüdür.
+Google Fonts sürümünde kutu çizim karakterleri olmadığı için Windows'ta
+çerçeveler kopuk görünüyordu.
 
 Durumlar: `queued · running · thinking · waiting · paused · error · done · stopped`.
 `T+hh:mm:ss` sayacı yalnızca aktif durumlarda (running, thinking, waiting) ilerler.

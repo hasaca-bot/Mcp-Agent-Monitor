@@ -1,3 +1,10 @@
+/* Bundled JetBrains Mono (OFL, full glyph set incl. box drawing + blocks).
+   The Google Fonts subsets omit box-drawing, which makes browsers fall back
+   to another font with different advances and breaks the frames. */
+@font-face { font-family: "AM Mono"; src: url("fonts/JetBrainsMono-Regular.woff2") format("woff2"); font-weight: 400; font-display: block; }
+@font-face { font-family: "AM Mono"; src: url("fonts/JetBrainsMono-Bold.woff2") format("woff2"); font-weight: 500 700; font-display: block; }
+@font-face { font-family: "AM Mono"; src: url("fonts/JetBrainsMono-ExtraBold.woff2") format("woff2"); font-weight: 800 900; font-display: block; }
+
 /* ───────────────────────────── tokens ───────────────────────────── */
 :root {
   --fs: clamp(11px, 0.68vw, 15px);
@@ -58,10 +65,11 @@ body {
     radial-gradient(120% 90% at 50% 0%, var(--bg2) 0%, var(--bg) 70%) fixed,
     var(--bg);
   color: var(--fg);
-  font-family: "JetBrains Mono", ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-family: "AM Mono", "JetBrains Mono", ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
   font-size: var(--fs);
   line-height: var(--lh);
   font-variant-ligatures: none;
+  font-synthesis: none;
   font-feature-settings: "liga" 0, "calt" 0;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
@@ -82,7 +90,8 @@ body {
 .blk { position: absolute; will-change: transform; }
 .row { height: var(--lhpx, calc(var(--lh) * 1em)); white-space: pre; }
 .c { display: inline-block; width: calc(var(--n) * var(--cw)); overflow-x: clip; overflow-y: visible; vertical-align: top; }
-.g { display: inline-block; width: var(--cw); text-align: center; vertical-align: top; }
+.g { display: inline-block; width: var(--cw); text-align: center; vertical-align: top; font-style: normal; }
+i { font-style: normal; }
 /* CSS-drawn rounded corners spanning two cells */
 .k { display: inline-block; position: relative; width: calc(2 * var(--cw)); height: var(--lhpx); vertical-align: top; }
 .k::before { content: ""; position: absolute; border: 0 solid currentColor; }
