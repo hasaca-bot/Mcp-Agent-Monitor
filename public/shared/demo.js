@@ -85,9 +85,32 @@ const now = () => Date.now();
 const ELAPSED = { scout: 252, architect: 663, 'coder-api': 1122, 'coder-web': 961, tester: 571, reviewer: 364, perf: 468, docs: 0 };
 
 // Register the cast. Elapsed times are back-dated so the clocks look real.
+const MIN = 60_000, HOUR = 60 * MIN, DAY = 24 * HOUR;
+const BUDGET = { scout: 80_000, architect: 150_000, 'coder-api': 250_000, 'coder-web': 220_000, tester: 120_000, reviewer: 100_000, perf: 40_000, docs: 60_000 };
+// each agent also shows the cap of the model tier it runs on
+const MODEL_CAPS = {
+  opus: { id: 'model-weekly', label: 'weekly · opus', unit: '%', used: 71.4, resetsInMs: 3 * DAY + 4 * HOUR },
+  sonnet: { id: 'model-weekly', label: 'weekly · sonnet', unit: '%', used: 44.9, resetsInMs: 3 * DAY + 4 * HOUR },
+  haiku: { id: 'model-rpm', label: 'rate req/min', unit: 'req', used: 22, limit: 50, resetsInMs: MIN },
+};
+const agentLimits = (a) => (MODEL_CAPS[a.model] ? [MODEL_CAPS[a.model]] : []);
+export const USAGE = {
+  provider: 'anthropic',
+  plan: 'Max 20x',
+  limits: [
+    { id: 'session', label: '5h session', unit: 'tok', used: 1_312_000, limit: 2_200_000, resetsInMs: HOUR + 47 * MIN, auto: true },
+    { id: 'weekly', label: 'weekly · all', unit: '%', used: 38.2, resetsInMs: 3 * DAY + 4 * HOUR },
+    { id: 'weekly-opus', label: 'weekly · opus', unit: '%', used: 71.4, resetsInMs: 3 * DAY + 4 * HOUR },
+    { id: 'tpm', label: 'rate tok/min', unit: 'tok', used: 182_000, limit: 400_000, resetsInMs: MIN },
+  ],
+  rate: { rpm: 38 },
+};
+
+// `api.usage(p)` is optional (Store.setUsage in the browser, REST client in Node).
 export async function seed(api) {
+  if (api.usage) await api.usage(USAGE);
   for (const a of AGENTS) {
-    await api.register({ id: a.id, name: a.name, role: a.role, model: a.model, task: a.task, steps: a.steps, status: 'running' });
+    await api.register({ id: a.id, name: a.name, role: a.role, model: a.model, task: a.task, steps: a.steps, status: 'running', limits: agentLimits(a) });
     for (const [m, l] of a.logs) await api.log(a.id, m, l);
     await api.update(a.id, {
       step: a.start.step,
@@ -96,6 +119,7 @@ export async function seed(api) {
       metrics: { tokens: a.tokens, toolCalls: a.tools },
       status: a.start.status,
       elapsedMs: (ELAPSED[a.id] || 0) * 1000,
+      tokenBudget: BUDGET[a.id],
     });
   }
 }
@@ -142,6 +166,18 @@ export function simulate(api, getAgents, { interval = 650, rand = Math.random } 
       if (LABELS[a.id]) patch.stepLabel = LABELS[a.id](n);
       if (progress >= 100) Object.assign(patch, { status: 'done', message: 'completed ✓', level: 'success', stepLabel: null });
       await api.update(a.id, patch);
+      if (rand() < 0.3) {
+        const cap = MODEL_CAPS[a.model];
+        const l = a.limits?.find((x) => x.id === cap?.id);
+        if (cap && l) await api.update(a.id, { limits: [{ id: cap.id, used: cap.unit === 'req' ? Math.round(10 + rand() * 38) : Math.min(100, l.used + 0.02), resetsAt: l.resetsAt }] });
+      }
+      if (api.usage && n % 4 === 0) {
+        await api.usage({ limits: [
+          { id: 'tpm', used: Math.round(120_000 + rand() * 170_000), resetsInMs: MIN },
+          { id: 'weekly', used: Math.min(100, 38.2 + n * 0.004) },
+          { id: 'weekly-opus', used: Math.min(100, 71.4 + n * 0.006) },
+        ], rate: { rpm: Math.round(30 + rand() * 20) } });
+      }
     } catch { /* agent removed meanwhile */ }
   }, interval);
   return () => clearInterval(timer);

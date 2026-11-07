@@ -2,6 +2,8 @@
 // Zero external deps — node:http only.
 import http from 'node:http';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import os from 'node:os';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store } from './store.js';
@@ -24,8 +26,50 @@ function send(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-export function createHub({ store = new Store(), log = () => {} } = {}) {
+// Host CPU / RAM sampler (the machine the agents run on).
+function cpuTimes() {
+  return os.cpus().map((c) => { const t = c.times; return { idle: t.idle, total: t.user + t.nice + t.sys + t.idle + t.irq }; });
+}
+function memory() {
+  const total = os.totalmem();
+  let avail = os.freemem();
+  try { // Linux: MemAvailable accounts for reclaimable cache
+    const m = /MemAvailable:\s+(\d+) kB/.exec(readFileSync('/proc/meminfo', 'utf8'));
+    if (m) avail = Number(m[1]) * 1024;
+  } catch {}
+  return { total, used: total - avail };
+}
+export function startSystemSampler(store, interval = 1000) {
+  let prev = cpuTimes();
+  const tick = () => {
+    const cur = cpuTimes();
+    const cores = cur.map((c, i) => {
+      const dt = c.total - (prev[i]?.total ?? 0), di = c.idle - (prev[i]?.idle ?? 0);
+      return dt > 0 ? Math.max(0, Math.min(100, (1 - di / dt) * 100)) : 0;
+    });
+    prev = cur;
+    const mem = memory();
+    store.setSystem({
+      t: Date.now(),
+      host: os.hostname(),
+      platform: `${os.platform()} ${os.arch()}`,
+      cpu: cores.reduce((a, b) => a + b, 0) / (cores.length || 1),
+      cores,
+      model: os.cpus()[0]?.model?.replace(/\s+/g, ' ').trim() || 'cpu',
+      load: os.loadavg(),
+      memUsed: mem.used,
+      memTotal: mem.total,
+      rss: process.memoryUsage().rss,
+    });
+  };
+  const timer = setInterval(tick, interval);
+  timer.unref?.();
+  return () => clearInterval(timer);
+}
+
+export function createHub({ store = new Store(), log = () => {}, sampleSystem = true } = {}) {
   const clients = new Set();
+  const stopSampler = sampleSystem ? startSystemSampler(store) : () => {};
 
   store.on('change', (evt) => {
     const line = `event: ${evt.type}\ndata: ${JSON.stringify(evt)}\n\n`;
@@ -50,6 +94,9 @@ export function createHub({ store = new Store(), log = () => {} } = {}) {
         req.on('close', () => { clearInterval(ping); clients.delete(res); });
         return;
       }
+      if (p === '/api/usage' && req.method === 'GET') return send(res, 200, store.usage);
+      if (p === '/api/usage' && req.method === 'POST') return send(res, 200, store.setUsage(await body(req)));
+      if (p === '/api/system' && req.method === 'GET') return send(res, 200, store.system);
       if (p === '/api/session' && req.method === 'POST') { store.setSession(await body(req)); return send(res, 200, store.session); }
       if (p === '/api/agents' && req.method === 'POST') return send(res, 200, store.register(await body(req)));
       if (p === '/api/agents' && req.method === 'DELETE') { store.clear(); return send(res, 200, { ok: true }); }
@@ -89,6 +136,6 @@ export function createHub({ store = new Store(), log = () => {} } = {}) {
         server.listen(port, host, () => { server.off('error', reject); resolve(server.address()); });
       });
     },
-    close() { for (const r of clients) r.end(); return new Promise((r) => server.close(r)); },
+    close() { stopSampler(); for (const r of clients) r.end(); return new Promise((r) => server.close(r)); },
   };
 }

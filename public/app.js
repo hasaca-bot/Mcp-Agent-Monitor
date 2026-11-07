@@ -108,10 +108,10 @@ function meter(width, pct, cls = '') {
   const p = Math.max(0, Math.min(100, pct));
   return { html: `<span class="meter ${cls}" style="--n:${width}"><span class="fill" style="clip-path:inset(0 ${(100 - p).toFixed(3)}% 0 0)"></span></span>`, n: width };
 }
-function sparkline(values, width) {
+function sparkline(values, width, fixedMax) {
   const v = values.slice(-width);
   if (!v.length) return '';
-  const max = Math.max(...v, 1);
+  const max = fixedMax || Math.max(...v, 1);
   return v.map((x) => SPARK[Math.min(7, Math.floor((x / max) * 7.999))]).join('');
 }
 function scramble(target, t) { // t: 0..1
@@ -216,7 +216,30 @@ const app = {
   menu: null,
   act: null, // control function(id, action)
   dirty: true,
+  usage: null,
+  sys: null,
+  cpuHist: [],
+  memHist: [],
+  tokHist: [], // [t, totalTokens] for burn rate
 };
+function pushSystem(sys) {
+  app.sys = sys;
+  app.cpuHist.push(sys.cpu); if (app.cpuHist.length > 120) app.cpuHist.shift();
+  app.memHist.push((sys.memUsed / sys.memTotal) * 100); if (app.memHist.length > 120) app.memHist.shift();
+}
+// Plausible host metrics for the in-browser demo (the real hub samples the OS).
+function fakeSystem(store) {
+  const n = 16, cores = Array.from({ length: n }, () => 20 + Math.random() * 30);
+  let mem = 0.46;
+  const tick = () => {
+    const busy = [...app.agents.values()].filter((a) => ACTIVE.has(a.status)).length;
+    for (let i = 0; i < n; i++) cores[i] = Math.max(2, Math.min(100, cores[i] + (Math.random() - 0.5) * 22 + (busy * 6 - cores[i]) * 0.08));
+    mem = Math.max(0.3, Math.min(0.92, mem + (Math.random() - 0.48) * 0.006));
+    store.setSystem({ t: Date.now(), host: 'workstation', platform: 'linux x64', cpu: cores.reduce((a, b) => a + b, 0) / n, cores: [...cores], model: 'demo cpu', load: [busy * 0.9 + 1.2, busy * 0.8 + 1, busy * 0.7 + 0.9], memUsed: mem * 32 * 2 ** 30, memTotal: 32 * 2 ** 30, rss: 84 * 2 ** 20 });
+  };
+  tick();
+  setInterval(tick, 1000);
+}
 function safeGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function safeSet(k, v) { try { localStorage.setItem(k, v); } catch {} }
 document.documentElement.dataset.theme = app.theme;
@@ -230,6 +253,9 @@ function onEvent(evt) {
   else if (evt.type === 'remove') app.agents.delete(evt.id);
   else if (evt.type === 'reset') app.agents.clear();
   else if (evt.type === 'session') app.session = { ...evt.session };
+  else if (evt.type === 'usage') { app.usage = structuredClone(evt.usage); return; }
+  else if (evt.type === 'system') { pushSystem(evt.system); return; }
+  if (evt.type === 'snapshot') { app.usage = evt.usage || null; if (evt.system) pushSystem(evt.system); }
   if (app.focus && !app.agents.has(app.focus)) app.focus = null;
   app.dirty = true;
 }
@@ -248,7 +274,7 @@ async function connect() {
 function connectHub() {
   app.mode = 'connecting';
   const es = new EventSource('/api/events');
-  for (const t of ['snapshot', 'upsert', 'remove', 'reset', 'session']) es.addEventListener(t, (e) => { app.mode = 'hub'; onEvent({ type: t, ...JSON.parse(e.data) }); });
+  for (const t of ['snapshot', 'upsert', 'remove', 'reset', 'session', 'usage', 'system']) es.addEventListener(t, (e) => { app.mode = 'hub'; onEvent({ type: t, ...JSON.parse(e.data) }); });
   es.onerror = () => { app.mode = 'offline'; app.dirty = true; };
   app.act = async (id, action) => {
     const path = action === 'dismiss' ? `/api/agents/${encodeURIComponent(id)}` : `/api/agents/${encodeURIComponent(id)}/control`;
@@ -262,9 +288,11 @@ async function startLocalDemo() {
   const store = new Store();
   store.on('change', (e) => onEvent(e.type === 'upsert' ? { type: 'upsert', agent: e.agent } : e));
   store.setSession({ title: SESSION_TITLE, startedAt: Date.now() - 1_247_000 });
-  await seed(store);
+  const api = { register: (p) => store.register(p), update: (id, p) => store.update(id, p), log: (id, m, l) => store.log(id, m, l), usage: (p) => store.setUsage(p) };
+  await seed(api);
+  fakeSystem(store);
   onEvent({ type: 'snapshot', ...store.snapshot() });
-  if (!params.has('still')) simulate(store, () => store.snapshot().agents, { interval: 600 });
+  if (!params.has('still')) simulate(api, () => store.snapshot().agents, { interval: 600 });
   app.act = async (id, action) => (action === 'dismiss' ? store.remove(id) : store.control(id, action));
   window.__store = store;
 }
@@ -406,6 +434,14 @@ class Pane {
     if (cur && a.stepLabel) stepLine.t(' · ' + a.stepLabel, a.status === 'waiting' ? 'c-wait' : 'dim');
     cell(stepLine);
 
+    // ── this agent's own usage limits (token budget, model caps…)
+    const maxLim = h >= 24 ? 3 : h >= 17 ? 2 : h >= 13 ? 1 : 0;
+    const lims = (a.limits || []).slice(0, maxLim);
+    if (lims.length) {
+      cell(L());
+      for (const l of lims) cell(L().t('◇ ', limitPct(l) >= 90 ? 'lvl-crit' : 'faint').h(limitCell(l, W - 2, t, 15).html(W - 2), W - 2));
+    }
+
     // ── flexible sections
     const fixedTail = 1; // metrics
     let free = h - 2 - rows.length - fixedTail;
@@ -539,7 +575,13 @@ function layout() {
   header.place(MX, 0, COLS - MX * 2, 4);
   footer.place(MX, ROWS - 1, COLS - MX * 2, 1);
   header.cache.fill(null); footer.cache.fill(null);
-  gridArea = { x: MX, y: 5, w: COLS - MX * 2, h: ROWS - 5 - 2 };
+  const TH = 4; // telemetry strip rows
+  gridArea = { x: MX, y: 5, w: COLS - MX * 2, h: ROWS - 5 - 2 - TH - 1 };
+  const ty = gridArea.y + gridArea.h + 1;
+  const sysW = Math.max(56, Math.min(96, Math.floor(gridArea.w * 0.38)));
+  sysBox.place(MX, ty, sysW, TH);
+  provBox.place(MX + sysW + GX, ty, gridArea.w - sysW - GX, TH);
+  sysBox.cache.fill(null); provBox.cache.fill(null);
   syncPanes(true);
 }
 
@@ -586,6 +628,113 @@ function paintEmpty(t) {
   empty.set(0, L().t('╭', 'fr').fill(w - 2, '─', 'fr').t('─╮', 'fr').html(w));
   for (let i = 0; i < 7; i++) empty.set(i + 1, L().t('│', 'fr').sp(1).h((lines[i] || L()).html(W), W).sp(1).t('│', 'fr').html(w));
   empty.set(8, L().t('╰', 'fr').fill(w - 2, '─', 'fr').t('─╯', 'fr').html(w));
+}
+
+
+/* ───────────────────────────── telemetry: system + provider ───────────────────────────── */
+const sysBox = new Block('tele sys');
+const provBox = new Block('tele prov');
+screen.append(sysBox.el, provBox.el);
+const lvl = (p) => (p >= 90 ? 'lvl-crit' : p >= 75 ? 'lvl-warn' : 'lvl-ok');
+const gb = (b) => (b / 2 ** 30).toFixed(1);
+const mb = (b) => Math.round(b / 2 ** 20);
+const dur = (ms) => {
+  if (ms <= 0) return 'now';
+  const m = Math.floor(ms / 60000), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60);
+  return d ? `${d}d ${h}h` : h ? `${h}h ${pad2(m % 60)}m` : m ? `${m}m` : `${Math.ceil(ms / 1000)}s`;
+};
+const amount = (v, unit) => (unit === '$' ? '$' + v.toFixed(2) : unit === 'req' ? String(Math.round(v)) : kfmt(v));
+const frameRow = (W, inner, w) => L().t('│', 'fr').sp(1).h(inner.html(W), W).sp(1).t('│', 'fr').html(w);
+let cpuShown = 0, memShown = 0;
+
+function renderSystem(t) {
+  const b = sysBox, w = b.w, W = w - 4;
+  if (!w) return;
+  const s = app.sys;
+  const right = L().t('┤', 'fr').t(s ? ` ${s.cores.length} cores · ${s.platform} ` : ' sampling… ', 'dim').t('├─╮', 'fr');
+  b.set(0, L().t('╭─┤', 'fr').t(' SYSTEM ', 'b acc').t('├─', 'fr').t(s ? ` ${s.host} ` : '', 'dim').fill(w - right.n, '─', 'fr').merge(right).html(w));
+  if (!s) { b.set(1, frameRow(W, L().t('waiting for hub sample…', 'dim'), w)); b.set(2, frameRow(W, L(), w)); }
+  else {
+    const mp = (s.memUsed / s.memTotal) * 100;
+    cpuShown += (s.cpu - cpuShown) * 0.15; memShown += (mp - memShown) * 0.15;
+    const sw = Math.max(6, Math.min(24, W - 52));
+    const mw = Math.max(8, W - 4 - 7 - sw - 2 - 21);
+    const cpuTail = L().t(sparkline(app.cpuHist, sw, 100).padStart(sw), `spark ${lvl(cpuShown)}`).sp(2).t('load ', 'dim').t(s.load.map((x) => x.toFixed(2)).join(' '), 'b');
+    const c = meter(mw, cpuShown, lvl(cpuShown));
+    b.set(1, frameRow(W, L().t('CPU ', 'dim b').h(c.html, c.n).t(` ${cpuShown.toFixed(1).padStart(5)}%`, `b ${lvl(cpuShown)}`).sp(2).merge(cpuTail), w));
+    const m = meter(mw, memShown, lvl(memShown));
+    const memTail = L().t(sparkline(app.memHist, sw, 100).padStart(sw), `spark ${lvl(memShown)}`).sp(2).t(`${gb(s.memUsed)}/${gb(s.memTotal)} GB`, 'b');
+    b.set(2, frameRow(W, L().t('RAM ', 'dim b').h(m.html, m.n).t(` ${memShown.toFixed(1).padStart(5)}%`, `b ${lvl(memShown)}`).sp(2).merge(memTail), w));
+  }
+  // per-core heat strip in the bottom border
+  const bl = L().t('╰─', 'fr');
+  if (s) {
+    const bars = s.cores.slice(0, Math.max(4, w - 30)).map((v) => `<span class="${lvl(v)}">${SPARK[Math.min(7, Math.floor((v / 100) * 7.999))]}</span>`).join('');
+    bl.t('┤', 'fr').t(' cores ', 'dim').h(`<span class="c spark" style="--n:${Math.min(s.cores.length, Math.max(4, w - 30))}">${bars}</span>`, Math.min(s.cores.length, Math.max(4, w - 30))).sp(1).t('├', 'fr');
+  }
+  const br = L().t('┤', 'fr').t(s ? ` hub ${mb(s.rss)} MB ` : ' — ', 'faint').t('├─╯', 'fr');
+  b.set(3, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
+}
+
+const limitPct = (l) => (l.unit === '%' ? l.used : l.limit ? (l.used / l.limit) * 100 : 0);
+function limitCell(l, cw, t, labW = 15) {
+  const pct = limitPct(l);
+  const amt = l.unit === '%' ? '' : `${amount(l.used, l.unit)}/${amount(l.limit, l.unit)}`;
+  const rs = l.resetsAt ? `rst ${dur(l.resetsAt - t)}` : '';
+  let tail = `${amt ? ' ' + amt.padStart(11) : ''}${rs ? ' ' + rs.padStart(9) : ''}`;
+  if (cw - labW - 8 - len(tail) < 8) tail = amt ? ' ' + amt : '';
+  const lab = (l.label || l.id).slice(0, labW).padEnd(labW);
+  const m = meter(Math.max(6, cw - labW - 1 - 7 - len(tail)), pct, lvl(pct));
+  return L().t(lab, 'dim').sp(1).h(m.html, m.n).t(` ${Math.min(999, pct).toFixed(1).padStart(5)}%`, `b ${lvl(pct)}`).t(tail, 'dim');
+}
+
+function burnRate(t) {
+  const total = [...app.agents.values()].reduce((a, x) => a + (x.metrics?.tokens || 0), 0);
+  const h = app.tokHist;
+  if (!h.length || t - h[h.length - 1][0] >= 1000) { h.push([t, total]); while (h.length > 2 && t - h[0][0] > 60000) h.shift(); }
+  if (h.length < 2) return 0;
+  const [t0, v0] = h[0], [t1, v1] = h[h.length - 1];
+  return t1 > t0 ? Math.max(0, ((v1 - v0) / (t1 - t0)) * 60000) : 0;
+}
+
+function renderProvider(t) {
+  const b = provBox, w = b.w, W = w - 4;
+  if (!w) return;
+  const u = app.usage;
+  const burn = burnRate(t);
+  const right = L().t('┤', 'fr').t(' burn ', 'dim').t(`${kfmt(burn)} tok/min`, 'b').t(u ? ` · upd ${ago(t - u.updatedAt)} ` : ' ', 'dim').t('├─╮', 'fr');
+  b.set(0, L().t('╭─┤', 'fr').t(' PROVIDER ', 'b acc').t('├─', 'fr').t(u ? ` ${u.provider}` : '', 'b').t(u?.plan ? ` · ${u.plan} ` : ' ', 'dim').fill(w - right.n, '─', 'fr').merge(right).html(w));
+  const limits = u?.limits || [];
+  if (!limits.length) {
+    b.set(1, frameRow(W, L().t('no usage reported yet · call ', 'dim').t('provider_usage_set', 'b').t(' over MCP', 'dim'), w));
+    b.set(2, frameRow(W, L().t('limits merge by id · unit "tok" + auto:true tracks agent tokens automatically', 'faint'), w));
+  } else {
+    const cols = W >= 120 ? 2 : 1;
+    const cw = Math.floor((W - (cols - 1) * 3) / cols);
+    for (let r = 0; r < 2; r++) {
+      const line = L();
+      for (let c = 0; c < cols; c++) {
+        const l = limits[r * cols + c];
+        if (c) line.t(' │ ', 'faint');
+        if (!l) { line.sp(cw); continue; }
+        const cell = limitCell(l, cw, t);
+        line.h(cell.html(cw), cw);
+      }
+      b.set(1 + r, frameRow(W, line, w));
+    }
+  }
+  // forecast in the bottom border: when does the first auto/token window fill at this burn rate?
+  const bl = L().t('╰─', 'fr');
+  const tokLimit = limits.find((l) => l.unit === 'tok' && l.auto) || limits.find((l) => l.unit === 'tok' && l.id !== 'tpm');
+  if (tokLimit && burn > 0) {
+    const left = Math.max(0, tokLimit.limit - tokLimit.used);
+    const eta = (left / burn) * 60000;
+    const before = tokLimit.resetsAt && eta < tokLimit.resetsAt - t;
+    bl.t('┤', 'fr').t(` at this burn ${tokLimit.label} fills in `, 'dim').t(dur(eta), `b ${before ? 'lvl-warn' : 'lvl-ok'}`).t(before ? ' · before reset ' : ' · after reset ✓ ', before ? 'lvl-warn' : 'dim').t('├', 'fr');
+  }
+  const over = limits.filter((l) => (l.unit === '%' ? l.used : (l.used / (l.limit || 1)) * 100) >= 90).length;
+  const br = L().t('┤', 'fr').t(over ? ` ✗ ${over} limit${over > 1 ? 's' : ''} ≥90% ` : ' ✓ within limits ', over ? 'lvl-crit b' : 'faint').t('├─╯', 'fr');
+  b.set(3, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
 }
 
 /* ───────────────────────────── theme menu ───────────────────────────── */
@@ -675,6 +824,8 @@ function frame() {
   const list = [...app.agents.values()].sort((a, b) => a.order - b.order);
   list.forEach((a, i) => { const p = panes.get(a.id); if (p && !p.el.classList.contains('is-hidden')) p.render(a, t, i); });
   paintEmpty(t);
+  renderSystem(t);
+  renderProvider(t);
   requestAnimationFrame(frame);
 }
 

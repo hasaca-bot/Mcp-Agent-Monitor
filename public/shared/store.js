@@ -18,12 +18,29 @@ const MAX_SPARK = 48;
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
 
+// Merge limit patches into a list (by id). Shape:
+// { id, label, used, limit, unit: '%'|'tok'|'req'|'$', resetsAt, auto }
+export function mergeLimits(list, patches = [], now = Date.now()) {
+  for (const l of patches) {
+    const id = l.id || slug(l.label || 'limit');
+    let cur = list.find((x) => x.id === id);
+    if (!cur) { cur = { id, label: l.label || id, used: 0, limit: 100, unit: '%', resetsAt: null, auto: false }; list.push(cur); }
+    for (const k of ['label', 'used', 'limit', 'unit', 'auto']) if (l[k] !== undefined) cur[k] = l[k];
+    if (l.resetsAt !== undefined) cur.resetsAt = l.resetsAt == null ? null : typeof l.resetsAt === 'number' ? l.resetsAt : Date.parse(l.resetsAt) || null;
+    if (l.resetsInMs !== undefined) cur.resetsAt = now + Number(l.resetsInMs);
+    if (cur.unit === '%') cur.limit = 100;
+  }
+  return list;
+}
+
 export class Store extends EventEmitter {
   constructor() {
     super();
     this.agents = new Map();
     this.seq = 0;
     this.session = { title: 'agent-monitor', startedAt: Date.now() };
+    this.usage = null; // provider usage / limits, reported by the orchestrator
+    this.system = null; // host CPU / RAM, sampled by the hub
   }
 
   snapshot() {
@@ -31,6 +48,8 @@ export class Store extends EventEmitter {
       session: this.session,
       now: Date.now(),
       agents: [...this.agents.values()].sort((a, b) => a.order - b.order),
+      usage: this.usage,
+      system: this.system,
     };
   }
 
@@ -93,10 +112,13 @@ export class Store extends EventEmitter {
       updatedAt: now,
       metrics: { tokens: 0, toolCalls: 0, ...(input.metrics || {}) },
       spark: [],
+      limits: [],
       logs: [],
       pendingControl: null,
     };
     this.agents.set(id, a);
+    if (input.tokenBudget !== undefined) mergeLimits(a.limits, [{ id: 'budget', label: 'token budget', unit: 'tok', limit: Number(input.tokenBudget), used: a.metrics.tokens || 0, auto: true }], now);
+    if (Array.isArray(input.limits)) mergeLimits(a.limits, input.limits, now);
     this.#setStatus(a, input.status || 'running', now);
     this.#syncSteps(a);
     if (input.message) this.#log(a, input.message, 'info', now);
@@ -125,9 +147,13 @@ export class Store extends EventEmitter {
     if (p.metrics) {
       for (const [k, v] of Object.entries(p.metrics)) a.metrics[k] = v;
     }
+    if (p.tokenBudget !== undefined) mergeLimits(a.limits, [{ id: 'budget', label: 'token budget', unit: 'tok', limit: Number(p.tokenBudget), used: a.metrics.tokens || 0, auto: true }], now);
+    if (Array.isArray(p.limits)) mergeLimits(a.limits, p.limits, now);
     if (p.tokensDelta) {
       a.metrics.tokens = (a.metrics.tokens || 0) + p.tokensDelta;
+      for (const l of a.limits) if (l.auto && l.unit === 'tok') l.used += p.tokensDelta;
       a.spark.push(p.tokensDelta);
+      this.#autoUsage(p.tokensDelta);
       if (a.spark.length > MAX_SPARK) a.spark.shift();
     }
     if (p.status) this.#setStatus(a, p.status, now);
@@ -188,6 +214,34 @@ export class Store extends EventEmitter {
   clear() {
     this.agents.clear();
     this.emit('change', { type: 'reset' });
+  }
+
+  // Provider usage limits. Limits merge by id; `auto: true` limits in tokens
+  // are advanced automatically by every agent's tokensDelta.
+  setUsage(p = {}) {
+    const now = Date.now();
+    const u = (this.usage ??= { provider: 'provider', plan: null, limits: [], rate: {}, updatedAt: now });
+    if (p.provider !== undefined) u.provider = p.provider;
+    if (p.plan !== undefined) u.plan = p.plan;
+    if (p.rate) Object.assign(u.rate, p.rate);
+    if (p.replace) u.limits = [];
+    mergeLimits(u.limits, p.limits, now);
+    u.updatedAt = now;
+    this.emit('change', { type: 'usage', usage: u });
+    return u;
+  }
+
+  #autoUsage(delta) {
+    const u = this.usage;
+    if (!u) return;
+    let hit = false;
+    for (const l of u.limits) if (l.auto && l.unit === 'tok') { l.used += delta; hit = true; }
+    if (hit) { u.updatedAt = Date.now(); this.emit('change', { type: 'usage', usage: u }); }
+  }
+
+  setSystem(sys) {
+    this.system = sys;
+    this.emit('change', { type: 'system', system: sys });
   }
 
   setSession(p = {}) {

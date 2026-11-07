@@ -46,7 +46,21 @@ içinde anlatılıyor. Claude Code bu skill'i otomatik olarak yükler.
 | `agent_log {id, message, level?}` | log satırı ekler |
 | `agent_complete {id, success, message?}` | `done` ya da `error` olarak bitirir |
 | `agent_check_control {id}` | bekleyen pause/stop/resume/retry komutunu okur ve tüketir |
+| `provider_usage_set {provider, plan, limits[]}` | alt kutudaki PROVIDER panelini (plan, 5 saatlik pencere, haftalık limit, rate limit) günceller |
+| `provider_usage_get` · `system_stats` | limit durumu · makinenin CPU/RAM bilgisi |
 | `agent_list`, `agent_remove {id}`, `monitor_reset` | listeleme ve temizlik |
+
+Her agent'ın **kendi limitleri** kendi panelinde ayrı görünür:
+`agent_register`/`agent_update` çağrısına `tokenBudget: 120000` (token
+bütçesi, `tokensDelta` ile otomatik dolar) ve `limits: [{id, label, used,
+limit, unit, resetsAt}]` (ör. agent'ın çalıştığı modelin haftalık limiti)
+eklenir.
+
+Ekranın altında iki kutu var. **SYSTEM** kutusu CPU ve RAM'i (meter, geçmiş
+grafiği, load average, çekirdek başına ısı şeridi) gösterir; değerleri hub
+saniyede bir işletim sisteminden okur. **PROVIDER** kutusu sağlayıcı
+limitlerini, reset sürelerini, dakikalık token harcamasını ve "bu hızla 5h
+penceresi X dakikada dolar" tahminini gösterir.
 
 Durumlar: `queued · running · thinking · waiting · paused · error · done · stopped`.
 `T+hh:mm:ss` sayacı yalnızca aktif durumlarda (running, thinking, waiting) ilerler.

@@ -29,6 +29,8 @@ export function createClient(base = hubUrl()) {
     takeControl: (id) => call('POST', `/api/agents/${encodeURIComponent(id)}/take-control`).then((r) => r.control),
     remove: (id) => call('DELETE', `/api/agents/${encodeURIComponent(id)}`),
     reset: () => call('DELETE', '/api/agents'),
+    usage: (p) => (p ? call('POST', '/api/usage', p) : call('GET', '/api/usage')),
+    system: () => call('GET', '/api/system'),
   };
 }
 

@@ -13,10 +13,22 @@ const { client } = await ensureHub({ log: err });
 const server = new McpServer({ name: 'agent-monitor', version: '1.0.0' });
 
 const status = z.enum(STATUSES);
+const limit = z.object({
+  id: z.string().optional().describe('Stable id, e.g. "session-5h", "weekly", "tpm". Limits merge by id.'),
+  label: z.string().optional().describe('Display label, e.g. "5h session", "weekly", "tokens/min"'),
+  used: z.number().optional().describe('Amount used so far (in `unit`)'),
+  limit: z.number().optional().describe('Cap (in `unit`). Ignored for unit "%" (always 100).'),
+  unit: z.enum(['%', 'tok', 'req', '$']).optional().describe('Default "%"'),
+  resetsAt: z.union([z.string(), z.number()]).nullable().optional().describe('ISO time or epoch ms when the window resets'),
+  resetsInMs: z.number().optional().describe('Alternative to resetsAt: ms from now'),
+  auto: z.boolean().optional().describe('unit "tok" only: add every agent tokensDelta to `used` automatically'),
+});
+
 const brief = (a) => ({
   id: a.id, name: a.name, status: a.status, progress: Math.round(a.progress * 10) / 10,
   step: a.steps[a.stepIndex]?.title ?? null, stepIndex: a.stepIndex, steps: a.steps.length,
   elapsedMs: a.elapsedMs + (a.runningSince ? Date.now() - a.runningSince : 0),
+  limits: (a.limits || []).map((l) => ({ id: l.id, used: l.used, limit: l.limit, unit: l.unit, pct: +((l.unit === '%' ? l.used : (l.used / (l.limit || 1)) * 100)).toFixed(1) })),
 });
 const ok = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] });
 const fail = (e) => ({ isError: true, content: [{ type: 'text', text: `agent-monitor: ${e.message}` }] });
@@ -52,6 +64,8 @@ server.registerTool('agent_register', {
     task: z.string().describe('One-line description of the task given to the sub-agent'),
     steps: z.array(z.string()).optional().describe('Planned steps, in order'),
     status: status.optional().describe('Initial status (default "running")'),
+    tokenBudget: z.number().optional().describe('Per-agent token budget; shown as its own meter in the pane and filled automatically from tokensDelta'),
+    limits: z.array(limit).optional().describe('Per-agent usage limits shown in this agent\'s pane (e.g. the weekly cap of the model it runs on). Merge by id.'),
   },
 }, guard(async (args) => ok({ ...brief(await client.register(args)), dashboard: client.base })));
 
@@ -70,6 +84,8 @@ server.registerTool('agent_update', {
     metrics: z.record(z.union([z.number(), z.string()])).optional().describe('Arbitrary counters, e.g. {toolCalls: 12, files: 4}'),
     task: z.string().optional(),
     addStep: z.string().optional(),
+    tokenBudget: z.number().optional().describe('Per-agent token budget; shown as its own meter in the pane and filled automatically from tokensDelta'),
+    limits: z.array(limit).optional().describe('Per-agent usage limits shown in this agent\'s pane (e.g. the weekly cap of the model it runs on). Merge by id.'),
   },
 }, guard(async ({ id, ...p }) => withControl(id, () => client.update(id, p))));
 
@@ -104,6 +120,35 @@ server.registerTool('agent_remove', {
   description: 'Remove one agent pane from the dashboard.',
   inputSchema: { id: z.string() },
 }, guard(async ({ id }) => ok(await client.remove(id))));
+
+
+server.registerTool('provider_usage_set', {
+  title: 'Report provider usage limits',
+  description: 'Show the model provider\'s usage / rate limits on the dashboard (e.g. plan session window, weekly cap, tokens-per-minute from rate-limit headers). Call at session start and whenever you learn new numbers. Limits merge by id.',
+  inputSchema: {
+    provider: z.string().optional().describe('e.g. "anthropic", "openai"'),
+    plan: z.string().optional().describe('e.g. "Max 20x", "API tier 4"'),
+    limits: z.array(limit).optional(),
+    rate: z.record(z.union([z.number(), z.string()])).optional().describe('Free-form current rates, e.g. {"rpm": 42}'),
+    replace: z.boolean().optional().describe('Drop existing limits first'),
+  },
+}, guard(async (args) => ok(await client.usage(args))));
+
+server.registerTool('provider_usage_get', {
+  title: 'Read provider usage',
+  description: 'Return the provider usage / limits currently shown on the dashboard (useful to throttle before hitting a limit).',
+  inputSchema: {},
+}, guard(async () => ok(await client.usage())));
+
+server.registerTool('system_stats', {
+  title: 'Host CPU / RAM',
+  description: 'Current CPU % (total and per core), load average and RAM usage of the machine running the monitor hub.',
+  inputSchema: {},
+}, guard(async () => {
+  const s = await client.system();
+  if (!s) return ok({ note: 'no sample yet' });
+  return ok({ cpu: +s.cpu.toFixed(1), cores: s.cores.map((c) => +c.toFixed(0)), load: s.load.map((l) => +l.toFixed(2)), memUsedGB: +(s.memUsed / 2 ** 30).toFixed(2), memTotalGB: +(s.memTotal / 2 ** 30).toFixed(2), memPct: +((s.memUsed / s.memTotal) * 100).toFixed(1) });
+}));
 
 server.registerTool('monitor_reset', {
   title: 'Clear dashboard',

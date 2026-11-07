@@ -173,6 +173,16 @@ body {
 @keyframes sheen { from { background-position: 180% 0, 0 0; } to { background-position: -80% 0, 0 0; } }
 :root[data-theme="paper"] .meter .fill { box-shadow: none; }
 
+/* telemetry levels */
+.lvl-ok { --pc: var(--run); color: var(--run); }
+.lvl-warn { --pc: var(--wait); color: var(--wait); }
+.lvl-crit { --pc: var(--err); color: var(--err); }
+.meter.lvl-ok .fill, .meter.lvl-warn .fill, .meter.lvl-crit .fill { background: linear-gradient(90deg, color-mix(in srgb, var(--pc) 55%, var(--accent2)), var(--pc)); }
+.meter.lvl-crit .fill { animation: crit 1.4s var(--ease-in-out) infinite; }
+@keyframes crit { 50% { opacity: .55; } }
+.tele { --frame: color-mix(in srgb, var(--accent) 30%, var(--faint)); }
+.tele .spark { opacity: .9; }
+
 /* current step shimmer */
 .shimmer {
   background: linear-gradient(90deg, var(--fg) 0%, var(--fg) 40%, var(--pc) 50%, var(--fg) 60%, var(--fg) 100%);

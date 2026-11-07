@@ -25,7 +25,13 @@ and give it to the user the first time).
 | `agent_log {id, message, level?}` | a single notable line (tool call, result, warning) |
 | `agent_complete {id, success, message?}` | when the sub-agent returns |
 | `agent_check_control {id}` | poll for operator commands while waiting on a long sub-agent |
+| `provider_usage_set {provider, plan, limits[]}` | at start and whenever you learn new limit numbers (bottom PROVIDER box) |
+| `provider_usage_get`, `system_stats` | check headroom / host CPU+RAM before spawning more agents |
 | `agent_list`, `agent_remove {id}`, `monitor_reset` | housekeeping |
+
+A **limit** is `{id, label, used, limit, unit: "%"|"tok"|"req"|"$", resetsAt|resetsInMs, auto}`.
+Limits merge by `id`; `unit:"tok"` + `auto:true` is advanced automatically by
+every `tokensDelta`.
 
 Statuses: `queued` · `running` · `thinking` · `waiting` · `paused` · `error` ·
 `done` · `stopped`. The elapsed clock (`T+hh:mm:ss`) only ticks while the
@@ -43,6 +49,11 @@ Log levels: `tool` (a tool call), `info`, `success`, `warn`, `error`.
      coder / qa / reviewer / writer …; `model` if known.
    - `task`: one line — what you asked it to do.
    - `steps`: 3–7 planned steps in order. Keep titles short (≤ 32 chars).
+   - `tokenBudget`: the token budget you give this sub-agent — shown as its
+     own meter in the pane and filled automatically from `tokensDelta`.
+   - `limits`: caps that apply to *this* agent (e.g. the weekly cap of the
+     model it runs on, its own rate limit). Each agent's pane shows its own
+     limits; update them later with `agent_update {id, limits:[…]}`.
    - Use `status: "queued"` if it will start later (dependencies), otherwise
      the default `running`.
 3. **Stream progress.** Whenever the sub-agent's state changes, call
@@ -59,7 +70,12 @@ Log levels: `tool` (a tool call), `info`, `success`, `warn`, `error`.
      drives the activity sparkline.
    Don't spam: one update per step change or notable event, roughly every
    few seconds at most per agent.
-4. **Obey the operator.** Every `agent_update` / `agent_log` response contains
+4. **Limits.** Report plan / rate limits you know about with
+   `provider_usage_set` (e.g. from `anthropic-ratelimit-*` response headers,
+   `/usage`, or the plan the user told you). If a limit shown on any pane or
+   in the PROVIDER box is ≥ 90 %, or `system_stats` shows CPU/RAM ≥ 90 %,
+   do not spawn new sub-agents; queue them (`status: "queued"`) instead.
+5. **Obey the operator.** Every `agent_update` / `agent_log` response contains
    `control`. If it is not `null`:
    - `pause` → stop dispatching work to that sub-agent, keep its state, call
      `agent_check_control` periodically until you get `resume` or `stop`.
@@ -68,10 +84,10 @@ Log levels: `tool` (a tool call), `info`, `success`, `warn`, `error`.
    - `retry` → start that sub-agent's task again from step 0.
    When you are blocked waiting on a long-running sub-agent, poll
    `agent_check_control` between checks so the buttons stay responsive.
-5. **Finish.** When a sub-agent returns, call
+6. **Finish.** When a sub-agent returns, call
    `agent_complete {id, success: true}` (or `success: false` with a one-line
    reason). Never leave panes in `running` after the work ended.
-6. **Parallel fan-out.** Register all parallel sub-agents first (so the grid
+7. **Parallel fan-out.** Register all parallel sub-agents first (so the grid
    appears at once), then launch them. Use `queued` for those waiting on
    dependencies and flip them to `running` when they start.
 
