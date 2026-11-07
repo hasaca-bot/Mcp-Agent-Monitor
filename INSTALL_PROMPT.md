@@ -43,7 +43,10 @@ overwrite existing config: merge into it.
      the tool's rules file).
    The short version of the rules: the orchestrator gives each sub-agent an id and
    pastes the "Self-report block" from SKILL.md into its prompt; each sub-agent
-   registers, updates and completes its own pane.
+   registers, updates and completes its own pane, sends a heartbeat update at
+   least every 60 seconds, and ALWAYS calls agent_complete before it stops
+   (also on failure or an early exit). For one-shot CLI agents that go quiet the
+   orchestrator can run `node scripts/watch-agents.mjs` to relay their log.
 
 5. Verify:
    - In the repo folder run `node scripts/smoke.mjs`; it must list the tools and

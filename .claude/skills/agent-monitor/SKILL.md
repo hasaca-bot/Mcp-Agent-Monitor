@@ -30,9 +30,16 @@ Your job is small; the sub-agents do the reporting.
    - append the **self-report block** below to its prompt, filled in with
      that id, its role, model and a one-line task. Nothing else.
 3. Do **not** call `agent_register` / `agent_update` / `agent_complete` for
-   sub-agents yourself. Exception: if a sub-agent crashes or is killed before
-   it could report, close its pane once with
-   `agent_complete {id, success: false, message: "<why>"}`.
+   sub-agents yourself. Exceptions:
+   - a sub-agent crashes, is killed, or exits without completing → close its
+     pane once with `agent_complete {id, success, message: "<why>"}`
+     (check its real result first);
+   - a one-shot CLI sub-agent (`opencode run`, `agy -p`, `codex exec`) goes
+     quiet → run the relay `node scripts/watch-agents.mjs
+     <id>=<logFile>@<repoDir>@<paths>` in the background; it tails the agent's
+     log and the files it edits and posts them to its pane every 20 s
+     (prefixed `relay:`), so the pane never looks dead. Agents without an MCP
+     connection can report with `node scripts/mon.mjs` (REST helper).
 4. Before spawning more agents you may read `agent_list`,
    `provider_usage_get` and `system_stats`; if a limit or CPU/RAM/GPU is
    ≥ 90 %, hold off.
@@ -50,10 +57,19 @@ server; the user is watching it live. Do this yourself; nobody else will.
    message:"<short line>"}. Use stepLabel for detail ("file 3/12"),
    status:"waiting" when blocked, status:"thinking" for long reasoning,
    tokensDelta when you know tokens used since the last update.
-   During a long step, send a short update at least every 2 minutes.
-3. If you know your own limits (model cap, rate limit), send them as
+3. HEARTBEAT (mandatory): never let 60 seconds pass without an
+   agent_update. Between tool calls, send what you are doing right now as
+   stepLabel + message ("reading scripts/moderate.mjs", "npm test → 12 passed",
+   "waiting for build"). A pane silent for 3 minutes is flagged SILENT.
+4. If you know your own limits (model cap, rate limit), send them as
    limits:[{id,label,used,limit,unit,resetsAt}] in agent_update.
-4. Last action: agent_complete {id:"<ID>", success:true|false, message:"<result>"}.
+5. Last action, ALWAYS — also when you fail, run out of budget, hit a limit,
+   or decide to stop early: agent_complete {id:"<ID>", success:true|false,
+   message:"<result>"}. Call it BEFORE you write your final answer. If you
+   are a one-shot CLI run (opencode run, agy -p, codex exec, claude -p), your
+   process ends the moment you stop replying, so never end your turn while a
+   step is still open: either finish and call agent_complete, or keep polling
+   the long command and keep sending heartbeats.
 Keep updates short and honest. If agent-monitor is unavailable, just do the task.
 ```
 
@@ -79,11 +95,23 @@ If your prompt gives you an agent-monitor id, you own that pane.
 3. **Your limits.** Send `limits: [{id, label, used, limit, unit, resetsAt}]`
    in `agent_update` for caps that apply to you, and `tokenBudget` for your
    budget.
-4. **Finish** with `agent_complete {id, success, message}`. Never leave your
-   pane in `running`.
-5. A pane that stays `running` / `thinking` / `waiting` with no update for
-   3 minutes is flagged **SILENT** on the dashboard. During long steps send
-   a short update (a new `stepLabel` is enough) at least every 2 minutes.
+4. **Finish** with `agent_complete {id, success, message}` — always, as your
+   last tool call and before your final answer, also on failure, budget or
+   rate-limit exhaustion, or an early stop. Never leave your pane in `running`.
+   One-shot CLI agents (`opencode run`, `agy -p`, `codex exec`, `claude -p`)
+   exit as soon as they stop replying: do not end your turn while waiting on
+   a background command — poll it, keep sending heartbeats, then complete.
+5. **Heartbeat.** Never go more than 60 seconds without an `agent_update`
+   (a new `stepLabel` + one-line `message` of what you are doing right now).
+   A pane that stays `running` / `thinking` / `waiting` with no update for
+   3 minutes is flagged **SILENT** on the dashboard — that is a bug in your
+   reporting, not a feature.
+
+> Known failure this rule fixes (2026-11-07): an OpenCode/DeepSeek reviewer
+> registered, then sent no updates for minutes, launched a long test in the
+> background, ended its turn while "waiting for it", and exited — its pane
+> stayed `running` at step 1 with an empty log. Report every step, heartbeat
+> every minute, and always `agent_complete` before you stop.
 
 ---
 
