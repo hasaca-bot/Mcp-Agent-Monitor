@@ -10,7 +10,6 @@ class EventEmitter {
 
 export const STATUSES = ['queued', 'running', 'thinking', 'waiting', 'paused', 'error', 'done', 'stopped'];
 export const ACTIVE = new Set(['running', 'thinking', 'waiting']);
-export const CONTROLS = ['pause', 'resume', 'stop', 'retry'];
 
 const MAX_LOG = 200;
 const MAX_SPARK = 48;
@@ -114,7 +113,6 @@ export class Store extends EventEmitter {
       spark: [],
       limits: [],
       logs: [],
-      pendingControl: null,
     };
     this.agents.set(id, a);
     if (input.tokenBudget !== undefined) mergeLimits(a.limits, [{ id: 'budget', label: 'token budget', unit: 'tok', limit: Number(input.tokenBudget), used: a.metrics.tokens || 0, auto: true }], now);
@@ -176,33 +174,6 @@ export class Store extends EventEmitter {
     a.updatedAt = Date.now();
     this.emit('change', { type: 'upsert', agent: a });
     return a;
-  }
-
-  // A control coming from the dashboard (human) — applied to the display at
-  // once and queued so the agent picks it up on its next MCP call.
-  control(id, action) {
-    const a = this.get(id);
-    if (!CONTROLS.includes(action)) throw Object.assign(new Error(`invalid action "${action}"`), { status: 400 });
-    const map = { pause: 'paused', resume: 'running', stop: 'stopped', retry: 'running' };
-    if (action === 'retry') {
-      a.elapsedMs = 0; a.startedAt = null; a.runningSince = null; a.progress = 0; a.stepIndex = 0;
-      a.steps.forEach((s) => (s.state = 'pending'));
-    }
-    this.#setStatus(a, map[action]);
-    this.#syncSteps(a);
-    this.#log(a, `operator → ${action}`, 'control');
-    a.pendingControl = action;
-    a.updatedAt = Date.now();
-    this.emit('change', { type: 'upsert', agent: a });
-    return a;
-  }
-
-  takeControl(id) {
-    const a = this.agents.get(id);
-    if (!a || !a.pendingControl) return null;
-    const c = a.pendingControl;
-    a.pendingControl = null;
-    return c;
   }
 
   remove(id) {

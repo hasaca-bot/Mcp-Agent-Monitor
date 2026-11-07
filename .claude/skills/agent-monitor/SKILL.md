@@ -1,15 +1,15 @@
 ---
 name: agent-monitor
-description: Report every sub-agent you launch to the ASCII Agent Monitor dashboard over MCP — register it, stream its status, progress %, current step, logs and token use, honour pause/stop/retry commands the operator clicks, and mark it done or failed. Use whenever you orchestrate, spawn, delegate to or fan out sub-agents / parallel workers / background tasks, or when the user asks to watch, monitor or see agents on a screen.
+description: Report every sub-agent you launch to the ASCII Agent Monitor dashboard over MCP — register it, stream its status, progress %, current step, logs, token use and limits, and mark it done or failed. The dashboard is read-only; you (the orchestrator) stay in control. Use whenever you orchestrate, spawn, delegate to or fan out sub-agents / parallel workers / background tasks, or when the user asks to watch, monitor or see agents on a screen.
 ---
 
 # Agent Monitor
 
 A live, split-screen ASCII dashboard shows one rounded pane per **sub-agent**
 (never the orchestrator itself). You keep it truthful through the
-`agent-monitor` MCP server. The operator can press **PAUSE / STOP / RESUME /
-RETRY** on a pane; those commands come back to you on your next call and you
-must obey them.
+`agent-monitor` MCP server. The dashboard is **read-only**: the user only
+watches. Starting, pausing, stopping and retrying sub-agents is your job as
+the orchestrator; the dashboard just reflects what you report.
 
 Dashboard: `http://127.0.0.1:7420` (call `monitor_open` to get the exact URL
 and give it to the user the first time).
@@ -24,7 +24,6 @@ and give it to the user the first time).
 | `agent_update {id, status?, progress?, step?, stepLabel?, message?, level?, tokensDelta?, metrics?}` | every meaningful change |
 | `agent_log {id, message, level?}` | a single notable line (tool call, result, warning) |
 | `agent_complete {id, success, message?}` | when the sub-agent returns |
-| `agent_check_control {id}` | poll for operator commands while waiting on a long sub-agent |
 | `provider_usage_set {provider, plan, limits[], source?}` | at start and whenever you learn new limit numbers — one row per harness/provider in the LIMITS box |
 | `provider_usage_get`, `system_stats` | check headroom / host CPU+RAM before spawning more agents |
 | `agent_list`, `agent_remove {id}`, `monitor_reset` | housekeeping |
@@ -78,17 +77,11 @@ Log levels: `tool` (a tool call), `info`, `success`, `warn`, `error`.
    headers, or the plan the user told you; put that in `source`. Codex rows are
    also filled automatically from `~/.codex/sessions` when the hub runs on the
    same machine. If a limit shown on any pane or
-   in the PROVIDER box is ≥ 90 %, or `system_stats` shows CPU/RAM ≥ 90 %,
+   in the LIMITS box is ≥ 90 %, or `system_stats` shows CPU/RAM ≥ 90 %,
    do not spawn new sub-agents; queue them (`status: "queued"`) instead.
-5. **Obey the operator.** Every `agent_update` / `agent_log` response contains
-   `control`. If it is not `null`:
-   - `pause` → stop dispatching work to that sub-agent, keep its state, call
-     `agent_check_control` periodically until you get `resume` or `stop`.
-   - `stop` → cancel the sub-agent (stop its task), do not restart it.
-   - `resume` → continue where it left off; send `status: "running"`.
-   - `retry` → start that sub-agent's task again from step 0.
-   When you are blocked waiting on a long-running sub-agent, poll
-   `agent_check_control` between checks so the buttons stay responsive.
+5. **Reflect your own decisions.** When *you* pause, stop or restart a
+   sub-agent, report it: `status: "paused"` / `"stopped"`, or for a restart
+   `status: "running", step: 0, progress: 0` with a short `message` saying why.
 6. **Finish.** When a sub-agent returns, call
    `agent_complete {id, success: true}` (or `success: false` with a one-line
    reason). Never leave panes in `running` after the work ended.
@@ -107,8 +100,6 @@ agent_update         { "id": "tester", "step": 1, "message": "fixtures: 6 users,
 agent_update         { "id": "tester", "status": "waiting", "stepLabel": "blocked on coder-api" }
 agent_update         { "id": "tester", "status": "running", "step": "Happy path", "stepLabel": "case 3/14",
                        "tokensDelta": 1800, "message": "bash: npm test -- auth → 12 passed", "level": "success" }
-   ← { ..., "control": "pause", "note": "Operator requested \"pause\". Honor it before continuing." }
-agent_check_control  { "id": "tester" }   ← { "control": "resume" }
 agent_complete       { "id": "tester", "success": true, "message": "31 tests, all green" }
 ```
 

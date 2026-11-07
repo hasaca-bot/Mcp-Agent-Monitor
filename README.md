@@ -3,8 +3,9 @@
 Terminalden çalışan AI uygulamanızın başlattığı **alt agent'ları** tek ekranda,
 yuvarlatılmış köşeli ASCII panellerle canlı izleyin. Ekran, o anda kaç alt
 agent çalışıyorsa o kadar panele kendiliğinden bölünür. Durum, yüzde, adım,
-süre ve log bilgileri **MCP** üzerinden güncellenir. Panellerdeki butonlarla
-(PAUSE / STOP / RESUME / RETRY) agent'lara komut gönderebilirsiniz.
+süre, log ve limit bilgileri **MCP** üzerinden güncellenir. Ekran salt
+izleme içindir: agent'ları başlatmak, durdurmak ya da yeniden denemek ana
+modelin (orkestratörün) işidir; monitör sadece bildirileni gösterir.
 
 ![Phosphor teması](docs/screenshots/theme-phosphor.png)
 
@@ -42,10 +43,9 @@ içinde anlatılıyor. Claude Code bu skill'i otomatik olarak yükler.
 | `monitor_open` | dashboard URL'ini döner |
 | `monitor_set_session {title}` | başlıktaki oturum adını ayarlar |
 | `agent_register {id, name, role, model?, task, steps[], status?}` | yeni panel açar |
-| `agent_update {id, status?, progress?, step?, stepLabel?, message?, level?, tokensDelta?, metrics?}` | durum, yüzde, adım ve log günceller; bekleyen operatör komutunu `control` alanında döner |
+| `agent_update {id, status?, progress?, step?, stepLabel?, message?, level?, tokensDelta?, metrics?}` | durum, yüzde, adım, limit ve log günceller |
 | `agent_log {id, message, level?}` | log satırı ekler |
 | `agent_complete {id, success, message?}` | `done` ya da `error` olarak bitirir |
-| `agent_check_control {id}` | bekleyen pause/stop/resume/retry komutunu okur ve tüketir |
 | `provider_usage_set {provider, plan, limits[], source?}` | alttaki LIMITS kutusunda o sağlayıcının/aracın satırını günceller. Her araç kendi satırını alır (Claude Code, Codex, OpenCode, Antigravity, ham API…) |
 | `provider_usage_get` · `system_stats` | limit durumu · makinenin CPU/RAM bilgisi |
 | `agent_list`, `agent_remove {id}`, `monitor_reset` | listeleme ve temizlik |
@@ -90,7 +90,6 @@ GET    /api/events                Server-Sent Events akışı
 POST   /api/agents                register
 PATCH  /api/agents/:id            update
 POST   /api/agents/:id/log        {message, level}
-POST   /api/agents/:id/control    {action: pause|resume|stop|retry}
 DELETE /api/agents/:id
 ```
 
@@ -119,7 +118,7 @@ Başka kartlarda GPU satırı "no GPU data" gösterir.
 
 ## Klavye
 
-`T` tema · `B` basic mod · `1–9` paneli büyüt · `ESC` grid'e dön · `P` hepsini durdur · `R` hepsini sürdür
+`T` tema · `B` basic mod · `1–9` paneli büyüt · `ESC` grid'e dön
 
 ## Nasıl çiziliyor
 

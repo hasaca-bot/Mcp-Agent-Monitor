@@ -45,7 +45,7 @@ export const AGENTS = [
     task: 'Security review of token handling, storage and logging',
     steps: ['Threat model', 'Review signer', 'Review storage', 'Check logs for PII', 'Write report'],
     start: { status: 'paused', step: 1, progress: 24 }, tokens: 15900, tools: 9,
-    logs: [['threat model: 7 assets, 11 threats (STRIDE)', 'info'], ['finding: kid header not validated against JWKS', 'warn'], ['operator → pause', 'control']],
+    logs: [['threat model: 7 assets, 11 threats (STRIDE)', 'info'], ['finding: kid header not validated against JWKS', 'warn'], ['orchestrator paused me: waiting for coder-api review slot', 'info']],
   },
   {
     id: 'perf', name: 'perf', role: 'benchmark', model: 'haiku',

@@ -216,7 +216,6 @@ const app = {
   theme: params.get('theme') || safeGet('am.theme') || 'phosphor',
   basic: (params.get('mode') || safeGet('am.mode')) === 'basic',
   menu: null,
-  act: null, // control function(id, action)
   dirty: true,
   usage: null,
   sys: null,
@@ -240,7 +239,7 @@ function fakeSystem(store) {
     for (let i = 0; i < n; i++) cores[i] = Math.max(2, Math.min(100, cores[i] + (Math.random() - 0.5) * 22 + (busy * 6 - cores[i]) * 0.08));
     mem = Math.max(0.3, Math.min(0.92, mem + (Math.random() - 0.48) * 0.006));
     gpu = Math.max(3, Math.min(99, gpu + (Math.random() - 0.5) * 14 + (busy * 9 - gpu) * 0.05));
-    store.setSystem({ t: Date.now(), host: 'workstation', platform: 'linux x64', cpu: cores.reduce((a, b) => a + b, 0) / n, cores: [...cores], model: 'demo cpu', load: [busy * 0.9 + 1.2, busy * 0.8 + 1, busy * 0.7 + 0.9], memUsed: mem * 32 * 2 ** 30, memTotal: 32 * 2 ** 30, rss: 84 * 2 ** 20, gpu: { name: 'demo gpu', util: gpu, memUsed: (6 + gpu / 12) * 2 ** 30, memTotal: 16 * 2 ** 30 } });
+    store.setSystem({ t: Date.now(), host: 'workstation', platform: 'linux x64', cpu: cores.reduce((a, b) => a + b, 0) / n, cores: [...cores], model: 'x86_64 · 16 threads', load: [busy * 0.9 + 1.2, busy * 0.8 + 1, busy * 0.7 + 0.9], memUsed: mem * 32 * 2 ** 30, memTotal: 32 * 2 ** 30, rss: 84 * 2 ** 20, gpu: { name: 'discrete GPU · 16 GB', util: gpu, memUsed: (6 + gpu / 12) * 2 ** 30, memTotal: 16 * 2 ** 30 } });
   };
   tick();
   setInterval(tick, 1000);
@@ -282,10 +281,6 @@ function connectHub() {
   const es = new EventSource('/api/events');
   for (const t of ['snapshot', 'upsert', 'remove', 'reset', 'session', 'usage', 'system']) es.addEventListener(t, (e) => { app.mode = 'hub'; onEvent({ type: t, ...JSON.parse(e.data) }); });
   es.onerror = () => { app.mode = 'offline'; app.dirty = true; };
-  app.act = async (id, action) => {
-    const path = action === 'dismiss' ? `/api/agents/${encodeURIComponent(id)}` : `/api/agents/${encodeURIComponent(id)}/control`;
-    await fetch(path, { method: action === 'dismiss' ? 'DELETE' : 'POST', headers: { 'content-type': 'application/json' }, body: action === 'dismiss' ? undefined : JSON.stringify({ action }) });
-  };
 }
 
 async function startLocalDemo() {
@@ -299,7 +294,6 @@ async function startLocalDemo() {
   fakeSystem(store);
   onEvent({ type: 'snapshot', ...store.snapshot() });
   if (!params.has('still')) simulate(api, () => store.snapshot().agents, { interval: 600 });
-  app.act = async (id, action) => (action === 'dismiss' ? store.remove(id) : store.control(id, action));
   window.__store = store;
 }
 
@@ -358,7 +352,7 @@ function renderHeader(t) {
   const theme = THEMES.find((x) => x.id === app.theme) || THEMES[0];
   const bl = L().t('╰─', 'fr');
   if (app.focus) { const b = btn(' « BACK TO GRID ', 'unfocus'); bl.t('┤', 'fr').h(b.html, b.n).t('├─', 'fr'); }
-  const actions = [btn(app.basic ? ' ▣ FULL MODE ' : ' □ BASIC MODE ', 'basic', '', app.basic ? 'on' : ''), btn(' ‖ PAUSE ALL ', 'pause-all'), btn(' ▶ RESUME ALL ', 'resume-all', '', 'ok'), btn(` ▒ THEME · ${theme.name.toUpperCase()} `, 'theme-menu', '', app.menu ? 'on' : '')];
+  const actions = [btn(app.basic ? ' ▣ FULL MODE ' : ' □ BASIC MODE ', 'basic', '', app.basic ? 'on' : ''), btn(` ▒ THEME · ${theme.name.toUpperCase()} `, 'theme-menu', '', app.menu ? 'on' : '')];
   const br = L();
   actions.forEach((a, i) => br.t('┤', 'fr').h(a.html, a.n).t(i < actions.length - 1 ? '├─' : '├', 'fr'));
   br.t('─╯', 'fr');
@@ -367,7 +361,7 @@ function renderHeader(t) {
 
 function renderFooter() {
   const w = footer.w;
-  const l = L().t(' T', 'acc b').t(' theme  ', 'dim').t('B', 'acc b').t(' basic  ', 'dim').t('1-9', 'acc b').t(' focus  ', 'dim').t('ESC', 'acc b').t(' grid  ', 'dim').t('P', 'acc b').t(' pause all  ', 'dim').t('R', 'acc b').t(' resume all', 'dim');
+  const l = L().t(' T', 'acc b').t(' theme  ', 'dim').t('B', 'acc b').t(' basic  ', 'dim').t('1-9', 'acc b').t(' focus  ', 'dim').t('ESC', 'acc b').t(' grid', 'dim').t('   read-only · the orchestrator controls the agents', 'faint');
   const r = L();
   if (!app.basic) r.t('mcp ', 'dim').t('agent_register · agent_update · agent_complete', 'faint').t('   ', '');
   r.t('made by', 'faint').sp(1).h(`<a class="btn credit" href="https://x.com/realhasaca" target="_blank" rel="noopener">${iconize(' X @realhasaca ')}</a>`, len(' X @realhasaca '));
@@ -532,13 +526,9 @@ class Pane {
       this.block.set(i + 1, L().t('│', 'fr').sp(1).h(r.html(W), W).sp(1).t('│', 'fr').html(w), key);
     }
 
-    // ── frame: bottom with actions
-    const acts = [];
-    if (ACTIVE.has(a.status)) acts.push(btn(' ‖ PAUSE ', 'pause', a.id), btn(' ■ STOP ', 'stop', a.id, 'danger'));
-    else if (a.status === 'paused' || a.status === 'queued') acts.push(btn(a.status === 'queued' ? ' ▶ START ' : ' ▶ RESUME ', 'resume', a.id, 'ok'), btn(' ■ STOP ', 'stop', a.id, 'danger'));
-    else acts.push(btn(' ▶ RETRY ', 'retry', a.id, 'ok'), btn(' ✕ DISMISS ', 'dismiss', a.id, 'danger'));
+    // ── frame: bottom (read-only monitor: the orchestrator owns control; only a view toggle here)
     const bl = L().t('╰─', 'fr');
-    for (const b2 of acts) bl.t('┤', 'fr').h(b2.html, b2.n).t('├─', 'fr');
+    if (basic) bl.t('┤', 'fr').t(' T+', 'dim').t(hms(tE), ACTIVE.has(a.status) ? 'b' : 'dim').t(' ', '').t('├', 'fr');
     const f = btn(app.focus === a.id ? ' « GRID ' : ' □ FOCUS ', app.focus === a.id ? 'unfocus' : 'focus', a.id);
     const br = L().t('┤', 'fr').h(f.html, f.n).t('├─╯', 'fr');
     this.block.set(h - 1, bl.fill(w - br.n, '─', 'fr').merge(br).html(w));
@@ -719,10 +709,11 @@ function limitCell(l, cw, t, labW = 15) {
 function burnRate(t) {
   const total = [...app.agents.values()].reduce((a, x) => a + (x.metrics?.tokens || 0), 0);
   const h = app.tokHist;
+  if (!app.agents.size) return 0; // no baseline until the first snapshot arrives
   if (!h.length || t - h[h.length - 1][0] >= 1000) { h.push([t, total]); while (h.length > 2 && t - h[0][0] > 60000) h.shift(); }
   if (h.length < 2) return 0;
   const [t0, v0] = h[0], [t1, v1] = h[h.length - 1];
-  return t1 > t0 ? Math.max(0, ((v1 - v0) / (t1 - t0)) * 60000) : 0;
+  return t1 - t0 >= 5000 ? Math.max(0, ((v1 - v0) / (t1 - t0)) * 60000) : 0; // need ≥5 s of history
 }
 
 const providers = () => app.usage?.providers || [];
@@ -840,12 +831,6 @@ screen.addEventListener('click', async (e) => {
   else if (act === 'theme-menu') toggleMenu();
   else if (act === 'basic') setBasic(!app.basic);
   else if (act === 'theme') { setTheme(id); setTimeout(() => toggleMenu(false), 160); }
-  else if (act === 'pause-all' || act === 'resume-all') {
-    for (const a of app.agents.values()) {
-      if (act === 'pause-all' && ACTIVE.has(a.status)) await app.act?.(a.id, 'pause');
-      if (act === 'resume-all' && (a.status === 'paused' || a.status === 'queued')) await app.act?.(a.id, 'resume');
-    }
-  } else if (app.act) await app.act(id, act);
 });
 
 addEventListener('keydown', (e) => {
@@ -855,8 +840,6 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'b' || e.key === 'B') setBasic(!app.basic);
   else if (e.key === 't' || e.key === 'T') { const i = THEMES.findIndex((x) => x.id === app.theme); setTheme(THEMES[(i + 1) % THEMES.length].id); }
   else if (/^[1-9]$/.test(e.key) && list[+e.key - 1]) { const id = list[+e.key - 1].id; app.focus = app.focus === id ? null : id; syncPanes(); }
-  else if (e.key === 'p' || e.key === 'P') screen.querySelector('[data-act="pause-all"]')?.click();
-  else if (e.key === 'r' || e.key === 'R') screen.querySelector('[data-act="resume-all"]')?.click();
 });
 
 let rz;

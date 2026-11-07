@@ -25,8 +25,6 @@ export function createClient(base = hubUrl()) {
     update: (id, p) => call('PATCH', `/api/agents/${encodeURIComponent(id)}`, p),
     get: (id) => call('GET', `/api/agents/${encodeURIComponent(id)}`),
     log: (id, message, level) => call('POST', `/api/agents/${encodeURIComponent(id)}/log`, { message, level }),
-    control: (id, action) => call('POST', `/api/agents/${encodeURIComponent(id)}/control`, { action }),
-    takeControl: (id) => call('POST', `/api/agents/${encodeURIComponent(id)}/take-control`).then((r) => r.control),
     remove: (id) => call('DELETE', `/api/agents/${encodeURIComponent(id)}`),
     reset: () => call('DELETE', '/api/agents'),
     usage: (p) => (p ? call('POST', '/api/usage', p) : call('GET', '/api/usage')),

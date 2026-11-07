@@ -5,7 +5,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { ensureHub } from './client.js';
-import { STATUSES, CONTROLS } from './store.js';
+import { STATUSES } from './store.js';
 
 const err = (...a) => process.stderr.write(a.join(' ') + '\n');
 const { client } = await ensureHub({ log: err });
@@ -33,12 +33,6 @@ const brief = (a) => ({
 const ok = (payload) => ({ content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] });
 const fail = (e) => ({ isError: true, content: [{ type: 'text', text: `agent-monitor: ${e.message}` }] });
 
-// Wrap agent-facing writes so any pending operator command rides back on the response.
-async function withControl(id, fn) {
-  const a = await fn();
-  const control = await client.takeControl(id).catch(() => null);
-  return ok({ ...brief(a), control, ...(control ? { note: `Operator requested "${control}". Honor it before continuing.` } : {}) });
-}
 const guard = (fn) => async (args) => { try { return await fn(args); } catch (e) { return fail(e); } };
 
 server.registerTool('monitor_open', {
@@ -71,7 +65,7 @@ server.registerTool('agent_register', {
 
 server.registerTool('agent_update', {
   title: 'Update a sub-agent',
-  description: 'Update status, progress %, current step, metrics, and/or append a log line. Any operator command (pause/stop/resume/retry) pending for this agent is returned in "control" — obey it.',
+  description: 'Update status, progress %, current step, limits, metrics, and/or append a log line. The dashboard is read-only: it only displays what you report.',
   inputSchema: {
     id: z.string(),
     status: status.optional(),
@@ -87,13 +81,13 @@ server.registerTool('agent_update', {
     tokenBudget: z.number().optional().describe('Per-agent token budget; shown as its own meter in the pane and filled automatically from tokensDelta'),
     limits: z.array(limit).optional().describe('Per-agent usage limits shown in this agent\'s pane (e.g. the weekly cap of the model it runs on). Merge by id.'),
   },
-}, guard(async ({ id, ...p }) => withControl(id, () => client.update(id, p))));
+}, guard(async ({ id, ...p }) => ok(brief(await client.update(id, p)))));
 
 server.registerTool('agent_log', {
   title: 'Append a log line',
   description: 'Append one line to the sub-agent log tail shown in its pane.',
   inputSchema: { id: z.string(), message: z.string(), level: z.enum(['info', 'warn', 'error', 'success', 'tool']).optional() },
-}, guard(async ({ id, message, level }) => withControl(id, () => client.log(id, message, level))));
+}, guard(async ({ id, message, level }) => ok(brief(await client.log(id, message, level)))));
 
 server.registerTool('agent_complete', {
   title: 'Finish a sub-agent',
@@ -102,12 +96,6 @@ server.registerTool('agent_complete', {
 }, guard(async ({ id, success, message }) => ok(brief(await client.update(id, {
   status: success ? 'done' : 'error', message: message ?? (success ? 'completed' : 'failed'), level: success ? 'success' : 'error',
 })))));
-
-server.registerTool('agent_check_control', {
-  title: 'Poll operator command',
-  description: `Return (and consume) the pending operator command for an agent: one of ${CONTROLS.join(', ')}, or null.`,
-  inputSchema: { id: z.string() },
-}, guard(async ({ id }) => ok({ id, control: await client.takeControl(id) })));
 
 server.registerTool('agent_list', {
   title: 'List sub-agents',

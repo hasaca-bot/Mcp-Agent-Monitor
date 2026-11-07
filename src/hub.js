@@ -130,15 +130,13 @@ export function createHub({ store = new Store(), log = () => {}, sampleSystem = 
       if (p === '/api/agents' && req.method === 'POST') return send(res, 200, store.register(await body(req)));
       if (p === '/api/agents' && req.method === 'DELETE') { store.clear(); return send(res, 200, { ok: true }); }
 
-      const m = p.match(/^\/api\/agents\/([^/]+)(?:\/(log|control|take-control))?$/);
+      const m = p.match(/^\/api\/agents\/([^/]+)(?:\/(log))?$/);
       if (m) {
         const id = decodeURIComponent(m[1]);
         if (!m[2] && req.method === 'GET') return send(res, 200, store.get(id));
         if (!m[2] && req.method === 'PATCH') return send(res, 200, store.update(id, await body(req)));
         if (!m[2] && req.method === 'DELETE') { store.remove(id); return send(res, 200, { ok: true }); }
         if (m[2] === 'log' && req.method === 'POST') { const b = await body(req); return send(res, 200, store.log(id, b.message, b.level)); }
-        if (m[2] === 'control' && req.method === 'POST') return send(res, 200, store.control(id, (await body(req)).action));
-        if (m[2] === 'take-control' && req.method === 'POST') return send(res, 200, { control: store.takeControl(id) });
       }
 
       if (req.method === 'GET' && !p.startsWith('/api/')) {
