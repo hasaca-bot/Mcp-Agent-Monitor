@@ -9,6 +9,12 @@ modelin (orkestratörün) işidir; monitör sadece bildirileni gösterir.
 
 ![Phosphor teması](docs/screenshots/theme-phosphor.png)
 
+## Tek mesajla kurulum
+
+[`INSTALL_PROMPT.md`](INSTALL_PROMPT.md) içindeki mesajı kendi agent'ınıza
+(Claude Code, Codex, OpenCode, Antigravity…) yapıştırın. Agent repoyu kurar,
+MCP sunucusunu bağlar, skill'i ekler ve çalıştığını test eder.
+
 ## Hızlı başlangıç
 
 ```bash
