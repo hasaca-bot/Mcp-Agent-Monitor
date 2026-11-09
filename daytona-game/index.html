@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Daytona 40</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">{"imports":{"three":"./vendor/three/build/three.module.min.js","three/addons/":"./vendor/three/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="topL">
+    <div class="pill"><span class="lbl">SIRA</span><b id="pos">20</b><small id="posN">/40</small></div>
+    <div class="pill"><span class="lbl">TUR</span><b id="lap">1</b><small id="lapN">/5</small></div>
+  </div>
+  <div id="tower"></div>
+  <div id="topR">
+    <canvas id="map" width="210" height="120"></canvas>
+    <div class="times"><span>SÜRE</span><b id="tCur">0:00.00</b><span>SON</span><b id="tLast">-</b><span>EN İYİ</span><b id="tBest">-</b></div>
+  </div>
+  <div id="msg"></div>
+  <div id="dash">
+    <div id="draft"><span>SLIPSTREAM</span><i><u id="draftBar"></u></i></div>
+    <div id="rpm"><u id="rpmBar"></u></div>
+    <div id="spd"><b id="kmh">0</b><small>km/s</small><em id="gear">1</em></div>
+  </div>
+  <div id="btns">
+    <button id="bCam">KAMERA</button><button id="bReset">PİSTE DÖN</button><button id="bPause">II</button>
+  </div>
+  <div id="touch">
+    <div class="tb" id="tL">◀</div><div class="tb" id="tR">▶</div>
+    <div class="tb" id="tBrk">FREN</div><div class="tb" id="tGas">GAZ</div>
+  </div>
+</div>
+
+<div id="menu" class="screen">
+  <div class="panel">
+    <h1>DAYTONA <span>40</span></h1>
+    <p class="sub">2.5 mil tri-oval · 31° eğim · 40 araç · slipstream</p>
+    <div class="row"><label>Tur</label><div class="opt" data-k="laps"><button data-v="3">3</button><button data-v="5">5</button><button data-v="10">10</button><button data-v="20">20</button></div></div>
+    <div class="row"><label>Zorluk</label><div class="opt" data-k="difficulty"><button data-v="0">Kolay</button><button data-v="1">Normal</button><button data-v="2">Zor</button></div></div>
+    <div class="row"><label>Başlangıç</label><div class="opt" data-k="gridPos"><button data-v="1">1.</button><button data-v="10">10.</button><button data-v="20">20.</button><button data-v="30">30.</button><button data-v="40">40.</button></div></div>
+    <div class="row"><label>Zaman</label><div class="opt" data-k="time"><button data-v="0">Gündüz</button><button data-v="1">İkindi</button><button data-v="2">Gün batımı</button><button data-v="3">Gece</button></div></div>
+    <div class="row"><label>Kamera</label><div class="opt" data-k="cam"><button data-v="0">Takip</button><button data-v="1">Uzak</button><button data-v="2">Kaput</button><button data-v="3">TV</button></div></div>
+    <div class="row"><label>Grafik</label><div class="opt" data-k="quality"><button data-v="0">Düşük</button><button data-v="1">Orta</button><button data-v="2">Yüksek</button></div></div>
+    <div class="row"><label>Direksiyon yardımı</label><div class="opt" data-k="assist"><button data-v="1">Açık</button><button data-v="0">Kapalı</button></div></div>
+    <div class="row"><label>Otomatik gaz</label><div class="opt" data-k="autoGas"><button data-v="1">Açık</button><button data-v="0">Kapalı</button></div></div>
+    <div class="row"><label>Eğerek sür (tilt)</label><div class="opt" data-k="tilt"><button data-v="0">Kapalı</button><button data-v="1">Açık</button></div></div>
+    <button id="start" class="big">YARIŞA BAŞLA</button>
+    <p class="keys">Klavye: ←/→ direksiyon · ↑ gaz · ↓ fren/geri · C kamera · R piste dön · P duraklat</p>
+  </div>
+</div>
+<div id="loading" class="screen hidden"><div class="panel"><h2>Yükleniyor…</h2><p id="loadTxt">Pist hazırlanıyor</p></div></div>
+<div id="pause" class="screen hidden"><div class="panel"><h2>Duraklatıldı</h2><button id="resume" class="big">DEVAM</button><button id="toMenu" class="big alt">MENÜ</button></div></div>
+<div id="result" class="screen hidden"><div class="panel"><h2 id="resTitle">Yarış bitti</h2><div id="resTable"></div><button id="again" class="big">TEKRAR YARIŞ</button><button id="toMenu2" class="big alt">MENÜ</button></div></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
