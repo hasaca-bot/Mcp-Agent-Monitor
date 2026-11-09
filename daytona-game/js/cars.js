@@ -118,7 +118,7 @@ export class CarRenderer {
     const wl = model.wheels.find((w) => w.c.x > 0), wr = model.wheels.find((w) => w.c.x < 0);
     const wm = new THREE.MeshStandardMaterial({ map: wl.mat.map, roughness: 0.6, metalness: 0.25, side: THREE.DoubleSide, shadowSide: THREE.DoubleSide });
     this.wL = new THREE.InstancedMesh(wl.g, wm, n * 2); this.wR = new THREE.InstancedMesh(wr.g, wm, n * 2);
-    for (const w of [this.wL, this.wR]) { w.frustumCulled = false; w.castShadow = q.shadows; w.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(w); }
+    for (const w of [this.wL, this.wR]) { w.frustumCulled = false; w.castShadow = false; w.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(w); }
     // tekerlek konumları (model uzayı, ölçekli)
     const cs = model.wheels.map((w) => w.c);
     const fz = Math.max(...cs.map((c) => c.z)) * SCALE.z + ZOFF, rz = Math.min(...cs.map((c) => c.z)) * SCALE.z + ZOFF;
@@ -202,8 +202,9 @@ export class Particles {
   }
   emit(x, y, z, vx, vy, vz, kind) {
     const i = this.i; this.i = (i + 1) % this.max;
-    this.p.set([x, y, z], i * 3); this.v.set([vx, vy, vz], i * 3); this.life[i] = kind ? 0.5 : 1.6; this.kind[i] = kind;
-    if (kind) this.col.set([1, 0.75, 0.3], i * 3); else this.col.set([0.86, 0.86, 0.86], i * 3);
+    const j = i * 3, p = this.p, v = this.v, c = this.col;
+    p[j] = x; p[j + 1] = y; p[j + 2] = z; v[j] = vx; v[j + 1] = vy; v[j + 2] = vz; this.life[i] = kind ? 0.5 : 1.6; this.kind[i] = kind;
+    if (kind) { c[j] = 1; c[j + 1] = 0.75; c[j + 2] = 0.3; } else { c[j] = c[j + 1] = c[j + 2] = 0.86; }
   }
   update(dt) {
     for (let i = 0; i < this.max; i++) {

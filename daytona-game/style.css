@@ -34,7 +34,7 @@ h2{margin:0 0 12px;font-style:italic;font-weight:900;font-size:28px}
 #msg.show{opacity:1}
 #dash{position:absolute;left:50%;transform:translateX(-50%);bottom:max(8px,env(safe-area-inset-bottom));width:min(300px,42vw);text-align:center}
 #rpm{height:9px;background:rgba(10,14,22,.6);border-radius:5px;overflow:hidden;margin:3px 0}
-#rpmBar{display:block;height:100%;width:0;background:linear-gradient(90deg,#3ddc84 0,#ffcc00 70%,#ff3b3b 92%)}
+#rpmBar{display:block;height:100%;width:100%;transform-origin:0 50%;transform:scaleX(0);will-change:transform;background:linear-gradient(90deg,#3ddc84 0,#ffcc00 70%,#ff3b3b 92%)}
 #spd b{font-size:clamp(34px,7vw,54px);font-weight:900;font-variant-numeric:tabular-nums}
 #spd small{font-size:13px;color:#cfd8e6;margin:0 10px 0 4px}
 #spd em{display:inline-block;min-width:34px;background:#ffcc00;color:#111;text-shadow:none;border-radius:6px;font-size:24px;font-weight:900;font-style:normal;padding:0 6px}

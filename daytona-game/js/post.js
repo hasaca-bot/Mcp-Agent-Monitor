@@ -45,7 +45,7 @@ const GradeShader = {
 
 export function buildPost(renderer, scene, camera, q, pr, hf) {
   const w = innerWidth * pr, h = innerHeight * pr;
-  const rt = new THREE.WebGLRenderTarget(w, h, { type: hf ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: q.msaa ? 4 : 0 });
+  const rt = new THREE.WebGLRenderTarget(w, h, { type: hf ? THREE.HalfFloatType : THREE.UnsignedByteType, samples: q.samples || 0 });
   const composer = new EffectComposer(renderer, rt);
   composer.addPass(new RenderPass(scene, camera));
   let bloom = null;
@@ -55,7 +55,7 @@ export function buildPost(renderer, scene, camera, q, pr, hf) {
   const sv = new THREE.Vector3();
   return {
     composer, grade,
-    resize() { composer.setSize(innerWidth, innerHeight); grade.uniforms.uRes.value.set(innerWidth * pr, innerHeight * pr); },
+    resize(npr = pr) { composer.setPixelRatio(npr); composer.setSize(innerWidth, innerHeight); grade.uniforms.uRes.value.set(innerWidth * npr, innerHeight * npr); },
     update(dt, speed, hit, sunDir, flare = true) {
       const u = grade.uniforms;
       u.uTime.value = (u.uTime.value + dt) % 100; u.uSpeed.value = Math.max(0, Math.min(1, (speed - 35) / 60)); u.uHit.value = hit;

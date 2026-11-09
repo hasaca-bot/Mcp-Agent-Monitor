@@ -30,7 +30,7 @@ document.querySelectorAll('.opt').forEach((el) => {
 const QUALITY = [
   { pr: 1, shadows: false, shadowSize: 0, post: false, bloom: false, aniso: 2, trees: 500, people: 260, msaa: false, rows: 0.45, envEvery: 0 },
   { pr: 1.5, shadows: true, shadowSize: 1024, post: true, bloom: false, aniso: 4, trees: 900, people: 500, msaa: false, rows: 0.75, envEvery: 0 },
-  { pr: 2, shadows: true, shadowSize: 2048, post: true, bloom: true, aniso: 8, trees: 1400, people: 800, msaa: true, rows: 1, envEvery: 150 },
+  { pr: 2, shadows: true, shadowSize: 2048, post: true, bloom: true, aniso: 8, trees: 1400, people: 800, msaa: true, rows: 1, envEvery: isTouch ? 0 : 240 },
 ];
 
 // ---------------- girişler ----------------
@@ -96,7 +96,8 @@ async function startGame() {
 }
 
 async function init() {
-  const q = QUALITY[opts.quality] || QUALITY[1];
+  const q = { ...(QUALITY[opts.quality] || QUALITY[1]) };
+  q.samples = q.msaa ? (isTouch ? 2 : 4) : 0;
   camMode = opts.cam | 0;
   const T = buildTrack();
   const canvas = $('gl');
@@ -104,7 +105,7 @@ async function init() {
   const pr = Math.min(window.devicePixelRatio || 1, q.pr);
   renderer.setPixelRatio(pr); renderer.setSize(innerWidth, innerHeight, false);
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.6;
-  renderer.shadowMap.enabled = q.shadows; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = q.shadows; renderer.shadowMap.type = isTouch ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;   // mobilde ucuz filtre
   q.aniso = Math.min(q.aniso, renderer.capabilities.getMaxAnisotropy());
 
   $('loadTxt').textContent = 'Dokular yükleniyor';
@@ -129,7 +130,7 @@ async function init() {
 
   const camera = new THREE.PerspectiveCamera(64, innerWidth / innerHeight, 0.6, 12000);
   const post = q.post ? buildPost(renderer, scene, camera, q, pr, hf) : null;
-  addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); if (post) post.resize(); });
+  addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight, false); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); if (post) post.resize(renderer.getPixelRatio()); });
 
   // TV kameraları
   const tvCams = [];
@@ -147,7 +148,7 @@ async function init() {
   $('posN').textContent = '/' + race.world.cars.length; $('lapN').textContent = '/' + race.laps;
   flash('TEMPO TURU', 2500, '#ffcc00');
   return { T, renderer, scene, camera, post, cubeCam, pm, q, TM, race, cars, parts, sun, sunDir, tvCams, clock: new THREE.Clock(), mctx, map, mapBg, mx, mz, F,
-    camPos: new THREE.Vector3(), camFwd: new THREE.Vector3(1, 0, 0), camUp: new THREE.Vector3(0, 1, 0), camInit: false, lastPlace: 99, shake: 0, hudT: 0, lastLap: 0, frameN: 0, fpsT: 0, fpsN: 0, fps: 60 };
+    camPos: new THREE.Vector3(), camFwd: new THREE.Vector3(1, 0, 0), camUp: new THREE.Vector3(0, 1, 0), camInit: false, lastPlace: 99, shake: 0, hudT: 0, lastLap: 0, frameN: 0, fpsT: 0, fpsN: 0, prBase: pr, prScale: 1, prCap: 1, good: 0, warm: 0, raised: false, hud: { kmh: -1, rpm: -1, elK: $('kmh'), elR: $('rpmBar') }, fps: 60 };
 }
 
 const v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), v3 = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0);
@@ -179,6 +180,18 @@ function frame() {
   g.cars.update();
   // duman: kayan / çimdeki araçlar
   g.frameN++;
+  // uyarlanabilir çözünürlük: kare hızı düşerse iç çözünürlüğü kıs, toparlanınca geri aç (akıcılık > keskinlik)
+  g.fpsT += dt; g.fpsN++;
+  if (g.fpsT >= 1) {
+    const fps = g.fpsN / g.fpsT; g.fpsT = 0; g.fpsN = 0; g.fps = fps; g.warm++;
+    if (g.warm > 3) {
+      let sc = g.prScale;
+      if (fps < 50) { if (g.raised) g.prCap = Math.max(0.5, sc * 0.94); sc = Math.max(0.5, sc * (fps < 38 ? 0.8 : 0.9)); g.good = 0; g.raised = false; }
+      else if (fps > 57) { g.raised = false; if (++g.good >= 4 && sc < g.prCap - 0.01) { sc = Math.min(g.prCap, sc * 1.07); g.good = 0; g.raised = true; } }
+      else g.good = 0;
+      if (sc !== g.prScale) { g.prScale = sc; const npr = g.prBase * sc; g.renderer.setPixelRatio(npr); g.renderer.setSize(innerWidth, innerHeight, false); if (g.post) g.post.resize(npr); }
+    }
+  }
   for (const c of race.world.cars) {
     if ((c.slip > 1.1 || (c.onGrass && c.speed > 12)) && (g.frameN + c.id) % 2 === 0) {
       const P = g.cars.pos[c.id], Fw = g.cars.fwd[c.id];
@@ -193,16 +206,17 @@ function frame() {
   if (!g.camInit) { g.camFwd.copy(Fw); g.camUp.copy(UP); }
   g.camFwd.lerp(Fw, 1 - Math.exp(-dt * 5)).normalize();
   g.camUp.lerp(v1.copy(UP).lerp(Up, 0.7), 1 - Math.exp(-dt * 3)).normalize();
-  let fov = 62 + Math.min(1, sp / 90) * 16;
+  const sf = Math.min(1, sp / 90);
+  let hfov = 80 + sf * 8, fov = 0;       // yatay FOV (derece); dikey FOV ekran oranından türetilir
   if (camMode === 0 || camMode === 1) {
-    const dist = camMode === 0 ? 7.2 : 13, h = camMode === 0 ? 2.5 : 4.6;
-    v1.copy(P).addScaledVector(g.camFwd, -dist - sp * 0.012).addScaledVector(g.camUp, h);
+    const dist = camMode === 0 ? 5.2 : 8.2, h = camMode === 0 ? 1.7 : 2.8;      // takip: araç merkezinin ~5 m arkası
+    v1.copy(P).addScaledVector(g.camFwd, -dist - sf * 0.5).addScaledVector(g.camUp, h);
     if (!g.camInit) g.camPos.copy(v1); else g.camPos.lerp(v1, 1 - Math.exp(-dt * 14));
     cam.position.copy(g.camPos); cam.up.copy(g.camUp);
-    cam.lookAt(v2.copy(P).addScaledVector(Fw, 5).addScaledVector(g.camUp, 1.1));
+    cam.lookAt(v2.copy(P).addScaledVector(Fw, 4).addScaledVector(g.camUp, 1.0));
   } else if (camMode === 2) {
     g.camPos.copy(P).addScaledVector(Fw, 0.75).addScaledVector(Up, 1.32);
-    cam.position.copy(g.camPos); cam.up.copy(Up); cam.lookAt(v2.copy(g.camPos).addScaledVector(Fw, 10)); fov += 6;
+    cam.position.copy(g.camPos); cam.up.copy(Up); cam.lookAt(v2.copy(g.camPos).addScaledVector(Fw, 10)); hfov += 10;
   } else {
     let best = g.tvCams[0], bd = 1e9;
     for (const c of g.tvCams) { const d = T.delta(c.s, p.s); const dd = d > -60 ? d + 60 : d + T.L; if (dd < bd) { bd = dd; best = c; } }
@@ -212,6 +226,7 @@ function frame() {
   g.camInit = true;
   if (g.shake > 0.01) { cam.position.x += (Math.random() - 0.5) * g.shake * 0.5; cam.position.y += (Math.random() - 0.5) * g.shake * 0.5; g.shake *= Math.exp(-dt * 6); }
   if (camMode !== 3 && sp > 60) { const s = (sp - 60) * 0.0006; cam.position.y += (Math.random() - 0.5) * s; }
+  if (!fov) fov = Math.max(36, Math.min(74, 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / cam.aspect) * 180 / Math.PI));
   cam.fov += (fov - cam.fov) * k; cam.updateProjectionMatrix();
 
   // gölge kamerası oyuncuyu izler
@@ -236,8 +251,9 @@ function frame() {
   g.lastPlace = p.place;
 
   // ---------- HUD ----------
-  $('kmh').textContent = Math.round(sp * 3.6);
-  $('rpmBar').style.width = Math.min(100, p.rpm / 9200 * 100) + '%';
+  const kmh = Math.round(sp * 3.6), rp = Math.round(Math.min(1, p.rpm / 9200) * 50);
+  if (kmh !== g.hud.kmh) { g.hud.kmh = kmh; g.hud.elK.textContent = kmh; }
+  if (rp !== g.hud.rpm) { g.hud.rpm = rp; g.hud.elR.style.transform = `scaleX(${rp / 50})`; }
   g.hudT -= dt;
   if (g.hudT <= 0) {
     g.hudT = 0.2;
