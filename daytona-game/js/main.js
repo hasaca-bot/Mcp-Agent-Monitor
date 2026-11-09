@@ -209,11 +209,11 @@ function frame() {
   const sf = Math.min(1, sp / 90);
   let hfov = 80 + sf * 8, fov = 0;       // yatay FOV (derece); dikey FOV ekran oranından türetilir
   if (camMode === 0 || camMode === 1) {
-    const dist = camMode === 0 ? 5.2 : 8.2, h = camMode === 0 ? 1.7 : 2.8;      // takip: araç merkezinin ~5 m arkası
+    const dist = camMode === 0 ? 5.2 : 8.2, h = camMode === 0 ? 1.95 : 3.0;      // takip: araç merkezinin ~5 m arkası
     v1.copy(P).addScaledVector(g.camFwd, -dist - sf * 0.5).addScaledVector(g.camUp, h);
     if (!g.camInit) g.camPos.copy(v1); else g.camPos.lerp(v1, 1 - Math.exp(-dt * 14));
     cam.position.copy(g.camPos); cam.up.copy(g.camUp);
-    cam.lookAt(v2.copy(P).addScaledVector(Fw, 4).addScaledVector(g.camUp, 1.0));
+    cam.lookAt(v2.copy(P).addScaledVector(Fw, 4).addScaledVector(g.camUp, 0.35));   // araç kadrajın orta-üstünde, gösterge altında kalmasın
   } else if (camMode === 2) {
     g.camPos.copy(P).addScaledVector(Fw, 0.75).addScaledVector(Up, 1.32);
     cam.position.copy(g.camPos); cam.up.copy(Up); cam.lookAt(v2.copy(g.camPos).addScaledVector(Fw, 10)); hfov += 10;
