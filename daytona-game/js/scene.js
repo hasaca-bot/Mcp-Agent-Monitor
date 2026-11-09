@@ -63,7 +63,7 @@ export const TIMES = [
   { name: 'Gündüz', elev: 52, az: 124, sunCol: 0xfff6e8, sunI: 4.4, hemiSky: 0xbfd8ff, hemiGnd: 0x4a5a3a, hemiI: 0.26, env: 0.85, fog: 0xc9daee, fogNear: 900, fogFar: 8000, turb: 3.0, ray: 1.0, exposure: 0.52, tint: 0xffffff, crowd: 0xdcdcdc, cloud: 0.9, flare: true },
   { name: 'İkindi', elev: 24, az: 124, sunCol: 0xffe9c8, sunI: 4.8, hemiSky: 0xbfd8ff, hemiGnd: 0x4a5a3a, hemiI: 0.22, env: 0.8, fog: 0xc4d4e6, fogNear: 700, fogFar: 6500, turb: 5.5, ray: 1.6, exposure: 0.58, tint: 0xffffff, crowd: 0xd8d8d8, cloud: 0.85, flare: true },
   { name: 'Gün batımı', elev: 6, az: 124, sunCol: 0xff9a4d, sunI: 4.2, hemiSky: 0x8fa0d8, hemiGnd: 0x4a3a3a, hemiI: 0.2, env: 0.9, fog: 0xe0b89a, fogNear: 500, fogFar: 5500, turb: 9, ray: 3.2, exposure: 0.66, tint: 0xffc8a0, crowd: 0xd0a890, cloud: 0.9, cloudCol: 0xffb48a, flare: true },
-  { name: 'Gece', night: true, elev: 58, az: 300, sunCol: 0xeaf2ff, sunI: 2.6, hemiSky: 0x2a3a66, hemiGnd: 0x10141c, hemiI: 0.22, env: 1.0, fog: 0x070a12, fogNear: 400, fogFar: 4500, turb: 2, ray: 0.2, exposure: 0.85, tint: 0x30384a, crowd: 0x8c8f99, cloud: 0.12, flare: false },
+  { name: 'Gece', night: true, elev: 58, az: 300, sunCol: 0xeaf2ff, sunI: 2.6, hemiSky: 0x2a3a66, hemiGnd: 0x10141c, hemiI: 0.42, env: 1.0, fog: 0x070a12, fogNear: 400, fogFar: 4500, turb: 2, ray: 0.2, exposure: 0.85, tint: 0x30384a, crowd: 0x8c8f99, cloud: 0.12, flare: false },
 ];
 
 export function buildScene(T, A, q, time = 1) {
@@ -86,7 +86,7 @@ export function buildScene(T, A, q, time = 1) {
     const sp = new Float32Array(1800 * 3), SR = rng(99);
     for (let i = 0; i < 1800; i++) { const a = SR() * 6.283, e = Math.asin(SR() * 0.95 + 0.03), r = 6000; sp.set([Math.cos(a) * Math.cos(e) * r, Math.sin(e) * r, Math.sin(a) * Math.cos(e) * r], i * 3); }
     const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-    const stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.6, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false }));
+    const stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xdfe8ff, size: 1.2, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.85, depthWrite: false }));
     stars.frustumCulled = false; scene.add(stars);
   } else scene.add(sky);
   scene.fog = new THREE.Fog(TM.fog, TM.fogNear, TM.fogFar);
