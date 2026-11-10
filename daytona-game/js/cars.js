@@ -117,6 +117,15 @@ export class CarRenderer {
     // tekerlekler: sol (+x) ve sağ (-x) örnek geometri
     const wl = model.wheels.find((w) => w.c.x > 0), wr = model.wheels.find((w) => w.c.x < 0);
     const wm = new THREE.MeshStandardMaterial({ map: wl.mat.map, roughness: 0.6, metalness: 0.25, side: THREE.DoubleSide, shadowSide: THREE.DoubleSide });
+    // tekerlek hareket bulanıklığı: hız arttıkça jant/diş deseni ortalama renge erir (spin blur)
+    this.wheelBlur = { value: 0 };
+    wm.onBeforeCompile = (sh) => {
+      sh.uniforms.uWB = this.wheelBlur;
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uWB;')
+        .replace('#include <map_fragment>', `#include <map_fragment>
+          { float l = dot(diffuseColor.rgb, vec3(0.333)); diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.035 + l * 0.25), uWB * 0.85); }`)
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.9, uWB);');
+    };
     this.wL = new THREE.InstancedMesh(wl.g, wm, n * 2); this.wR = new THREE.InstancedMesh(wr.g, wm, n * 2);
     for (const w of [this.wL, this.wR]) { w.frustumCulled = false; w.castShadow = false; w.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(w); }
     // tekerlek konumları (model uzayı, ölçekli)

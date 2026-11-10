@@ -16,7 +16,7 @@ if (isTouch) document.body.classList.add('touch');
 const params = new URLSearchParams(location.search);
 
 // ---------------- ayarlar ----------------
-const DEF = { laps: 5, difficulty: 1, gridPos: 20, quality: isTouch ? 1 : 2, assist: 1, autoGas: isTouch ? 1 : 0, tilt: 0, time: 1, cam: 0 };
+const DEF = { laps: 5, difficulty: 1, gridPos: 20, quality: isTouch ? 1 : 2, assist: 1, autoGas: isTouch ? 1 : 0, tilt: 0, time: 1, cam: 0, gasLvl: 1, brkLvl: 1, mblur: 1 };
 let opts = { ...DEF };
 try { Object.assign(opts, JSON.parse(localStorage.getItem('daytona40') || '{}')); } catch (e) { /* yok say */ }
 for (const k of Object.keys(DEF)) if (params.has(k)) opts[k] = +params.get(k);
@@ -60,10 +60,16 @@ function readInput(dt, speed) {
     const rate = (steerTarget === 0 ? 4.5 : 2.6) * dt;
     const d = steerTarget - input.steer; input.steer += Math.abs(d) < rate ? d : Math.sign(d) * rate;
   }
+  // Seviyeli gaz/fren: basılı tutunca kademeli artar (sınıra kadar), bırakınca ANINDA 0'a düşer.
+  //   gasLvl/brkLvl: 0 = Yumuşak (%60 sınır, yavaş artış), 1 = Normal (%85), 2 = Tam (%100, hızlı)
+  const GL = [{ max: 0.6, up: 1.6 }, { max: 0.85, up: 2.6 }, { max: 1, up: 5 }];
+  const gl = GL[opts.gasLvl] || GL[1], bl = GL[opts.brkLvl] || GL[1];
   const brk = keys.ArrowDown || keys.KeyS || keys.Space || touch.brk ? 1 : 0;
   let thr = keys.ArrowUp || keys.KeyW || touch.gas ? 1 : 0;
   if (opts.autoGas && !brk) thr = 1;
-  input.thr += (thr - input.thr) * Math.min(1, dt * 8); input.brk += (brk - input.brk) * Math.min(1, dt * 10);
+  input.thr = thr ? Math.min(gl.max, input.thr + gl.up * dt) : 0;
+  input.brk = brk ? Math.min(bl.max, input.brk + bl.up * 1.4 * dt) : 0;
+  if (thr && input.thr < 0.3) input.thr = Math.min(gl.max, 0.3);   // basar basmaz tepki
 }
 
 // ---------------- oyun durumu ----------------
@@ -172,12 +178,12 @@ function frame() {
       const n = Math.min(10, 2 + e.v);
       for (let k = 0; k < n; k++) g.parts.emit(P.x + (Math.random() - 0.5) * 2, P.y + 0.4, P.z + (Math.random() - 0.5) * 2, g.cars.fwd[i].x * c.speed * 0.7 + (Math.random() - 0.5) * 8, 1 + Math.random() * 4, g.cars.fwd[i].z * c.speed * 0.7 + (Math.random() - 0.5) * 8, 1);
     }
-    if (c === p || e.other === p) { g.shake = Math.min(1, g.shake + e.v * 0.08); audio.hit(e.v); if (navigator.vibrate) navigator.vibrate(Math.min(120, e.v * 12)); }
+    if (c === p || e.other === p) { g.shake = Math.min(0.6, g.shake + e.v * 0.03); audio.hit(e.v); if (navigator.vibrate) navigator.vibrate(Math.min(120, e.v * 12)); }
     else if (near) audio.hit(e.v * 0.3);
   }
   ev.length = 0;
 
-  g.cars.update();
+  g.cars.update(); g.cars.wheelBlur.value = Math.max(0, Math.min(1, (p.speed - 12) / 45)) * (g.q.post ? 1 : 0.8);
   // duman: kayan / çimdeki araçlar
   g.frameN++;
   // uyarlanabilir çözünürlük: kare hızı düşerse iç çözünürlüğü kıs, toparlanınca geri aç (akıcılık > keskinlik)
@@ -224,8 +230,7 @@ function frame() {
     fov = Math.max(9, Math.min(46, 2200 / Math.max(30, best.p.distanceTo(P))));
   }
   g.camInit = true;
-  if (g.shake > 0.01) { cam.position.x += (Math.random() - 0.5) * g.shake * 0.5; cam.position.y += (Math.random() - 0.5) * g.shake * 0.5; g.shake *= Math.exp(-dt * 6); }
-  if (camMode !== 3 && sp > 60) { const s = (sp - 60) * 0.0006; cam.position.y += (Math.random() - 0.5) * s; }
+  if (g.shake > 0.01) { g.shk = (g.shk || 0) + dt * 38; cam.position.y += Math.sin(g.shk) * g.shake * 0.12; cam.position.x += Math.cos(g.shk * 0.8) * g.shake * 0.1; g.shake *= Math.exp(-dt * 7); }
   if (!fov) fov = Math.max(36, Math.min(74, 2 * Math.atan(Math.tan(hfov * Math.PI / 360) / cam.aspect) * 180 / Math.PI));
   cam.fov += (fov - cam.fov) * k; cam.updateProjectionMatrix();
 
@@ -238,7 +243,7 @@ function frame() {
     g.cubeCam.update(g.renderer, g.scene);
     const old = g.scene.environment; g.scene.environment = g.pm.fromCubemap(g.cubeCam.renderTarget.texture).texture; if (old) old.dispose();
   }
-  if (g.post) { g.post.update(dt, sp, g.shake, g.sunDir, g.TM.flare); g.post.composer.render(); } else g.renderer.render(g.scene, cam);
+  if (g.post) { g.post.update(dt, sp, g.shake, g.sunDir, g.TM.flare, opts.mblur); g.post.composer.render(); } else g.renderer.render(g.scene, cam);
 
   // ---------- ses ----------
   let pack = 0, prpm = 6000;
