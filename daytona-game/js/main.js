@@ -300,10 +300,11 @@ function showResults(g) {
   $('result').classList.remove('hidden');
 }
 
-// isteğe bağlı arayüz görselleri (assets/ui/*.png) — yoksa varsayılan stil
-tryImage('assets/ui/menu_bg.png').then((im) => { if (im) for (const id of ['menu', 'pause', 'result']) { $(id).style.backgroundImage = "linear-gradient(rgba(5,7,12,.45),rgba(5,7,12,.8)),url('assets/ui/menu_bg.png')"; $(id).style.backgroundSize = 'cover'; $(id).style.backgroundPosition = 'center'; } });
-tryImage('assets/ui/loading.png').then((im) => { if (im) { const l = $('loading'); l.style.backgroundImage = "linear-gradient(rgba(5,7,12,.2),rgba(5,7,12,.7)),url('assets/ui/loading.png')"; l.style.backgroundSize = 'cover'; l.style.backgroundPosition = 'center'; } });
-tryImage('assets/ui/logo.png').then((im) => { if (im) { const h = document.querySelector('#menu h1'); h.innerHTML = ''; im.style.cssText = 'max-width:100%;max-height:22vh;display:block'; h.appendChild(im); } });
+// arayüz görselleri (assets/ui/): menu_bg.jpg, loading.jpg, result_bg.jpg, logo.jpg — yoksa varsayılan stil
+const bg = (id, file, shade) => tryImage('assets/ui/' + file).then((im) => { if (im) { const e = $(id); e.style.backgroundImage = `linear-gradient(${shade}),url('assets/ui/${file}')`; e.style.backgroundSize = 'cover'; e.style.backgroundPosition = 'center'; } });
+bg('menu', 'menu_bg.jpg', 'rgba(5,7,12,.5),rgba(5,7,12,.72)'); bg('pause', 'menu_bg.jpg', 'rgba(5,7,12,.7),rgba(5,7,12,.85)');
+bg('loading', 'loading.jpg', 'rgba(5,7,12,.15),rgba(5,7,12,.72)'); bg('result', 'result_bg.jpg', 'rgba(5,7,12,.55),rgba(5,7,12,.75)');
+tryImage('assets/ui/logo.jpg').then((im) => { if (im) { const h = document.querySelector('#menu h1'); h.innerHTML = ''; im.style.cssText = 'width:min(100%,420px);max-height:24vh;object-fit:contain;display:block;margin:-10px auto -14px;mix-blend-mode:lighten'; h.appendChild(im); } });
 
 if (sessionStorage.getItem('d40auto') || params.has('auto')) { sessionStorage.removeItem('d40auto'); startGame(); }
 document.addEventListener('visibilitychange', () => { if (document.hidden && G && !paused) togglePause(); });

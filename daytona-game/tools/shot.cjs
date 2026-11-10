@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
   for (const w of waits) {
     await p.waitForTimeout(w);
     for (const k of keys.split(',').filter(Boolean)) await p.keyboard.press(k);
-    await p.screenshot({ path: out.replace('.png', (i ? '_' + i : '') + '.png') }); i++;
+    await p.screenshot({ timeout: 120000, path: out.replace('.png', (i ? '_' + i : '') + '.png') }); i++;
     const info = await p.evaluate(() => window.__G ? { t: __G.race.t.toFixed(1), phase: __G.race.phase, v: (__G.race.player.speed * 3.6).toFixed(0), place: __G.race.player.place, calls: __G.renderer.info.render.calls, tris: __G.renderer.info.render.triangles } : null);
     console.log(JSON.stringify(info));
   }

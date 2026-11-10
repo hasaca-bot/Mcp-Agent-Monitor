@@ -18,7 +18,7 @@ const GradeShader = {
       // hıza bağlı radyal bulanıklık (merkez net, kenarlar akar)
       float edge = smoothstep(0.02, 0.30, r2);                      // merkez net, kenarlar hızla artan bulanık
       float ground = smoothstep(0.62, 0.0, vUv.y);                  // ekranın alt kısmı (yol) daha hızlı akar
-      float amt = uBlur * uSpeed * (0.05 + 0.11 * edge + 0.05 * ground) * (0.4 + 0.6 * edge + 0.5 * ground);
+      float amt = uBlur * uSpeed * (0.02 + 0.06 * edge + 0.03 * ground) * (0.3 + 0.7 * edge + 0.5 * ground);
       float j = hash(vUv * uRes + uTime) - 0.5;
       vec3 col = vec3(0.0);
       for (int i = 0; i < 10; i++) { float t = (float(i) + j) / 10.0; col += texture2D(tDiffuse, vUv - c * amt * t).rgb; }
@@ -39,7 +39,7 @@ const GradeShader = {
       col *= mix(vec3(0.93, 0.98, 1.07), vec3(1.06, 1.0, 0.93), smoothstep(0.0, 0.9, l));
       col = max(vec3(0.0), (col - 0.18) * 1.07 + 0.18);
       // vinyet + gren
-      col *= 1.0 - smoothstep(0.08, 0.55, r2) * (0.5 + 0.2 * uSpeed);
+      col *= 1.0 - smoothstep(0.1, 0.6, r2) * (0.38 + 0.14 * uSpeed);
       col += (hash(vUv * uRes * 0.7 + uTime * 3.1) - 0.5) * 0.02 * (0.4 + l);
       gl_FragColor = vec4(max(col, 0.0), 1.0);
     }`,

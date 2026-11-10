@@ -177,7 +177,7 @@ export function buildScene(T, A, q, time = 1) {
   const banT = tex(A.wall_banner, { repeat: true, aniso });
   const wallM = new THREE.MeshStandardMaterial({ map: banT, roughness: 0.7, side: THREE.DoubleSide });
   const wall = new THREE.Mesh(ribbon(T, 0, L, 4, [{ d: W, dy: 0, u: 0 }, { d: W, dy: 1.15, u: 1 }], 1, false), wallM);
-  { const uv = wall.geometry.attributes.uv; for (let i = 0; i < uv.count; i++) { const u = uv.getX(i), v = uv.getY(i); uv.setXY(i, 0, 0); wall.geometry.attributes.uv.setXY(i, -(i >> 1) * 4 / 36, u); } }
+  { const uv = wall.geometry.attributes.uv; for (let i = 0; i < uv.count; i++) { const u = uv.getX(i), v = uv.getY(i); uv.setXY(i, 0, 0); wall.geometry.attributes.uv.setXY(i, -(i >> 1) * 4 / 7.2, u); } }
   wall.castShadow = q.shadows; wall.receiveShadow = true; scene.add(wall);
   scene.add(new THREE.Mesh(ribbon(T, 0, L, 4, [{ d: W, dy: 1.15, u: 0 }, { d: W, out: 0.5, dy: 1.15, u: 1 }, { d: W, out: 0.5, dy: -0.2, u: 0 }], 20, false), concM));
   const fenT = tex(fenceTexture(), { repeat: true, aniso });
@@ -257,8 +257,8 @@ export function buildScene(T, A, q, time = 1) {
     const sc = 0.8 + R() * 0.9;
     trees[(R() * 3) | 0].push({ x, y: -0.45, z, ry: R() * 3.14, sx: sc, sy: sc * (0.9 + R() * 0.3) });
   }
-  const treeG = crossQuad(9, 13.5);
-  trees.forEach((l, i) => instanced(A['tree' + (i + 1)], treeG, l));
+  const TH = [16, 14, 20];     // palmiye / meşe / çam yükseklikleri (m); genişlik görselin oranından
+  trees.forEach((l, i) => { const im = A['tree' + (i + 1)]; instanced(im, crossQuad(TH[i] * im.width / im.height * (i === 1 ? 1 : 1.15), TH[i]), l); });
 
   // insanlar: iç saha çit kenarı, pit duvarı, set üstü
   const people = [[], [], [], []];
